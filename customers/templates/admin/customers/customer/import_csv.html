@@ -1,0 +1,20 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+<div id="content-main">
+    <h1>Import Customers CSV</h1>
+    <p>Upload a CSV file with one row per service. If a customer has multiple services, repeat the customer columns on each row.</p>
+    <p>Date columns may use <strong>MM-DD-YYYY</strong> or <strong>M/D/YYYY</strong> format. <code>activation_date</code> may also be left blank.</p>
+    <p><strong>Required columns:</strong> {{ expected_columns|join:", " }}</p>
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <div style="margin: 16px 0;">
+            <input type="file" name="csv_file" accept=".csv" required>
+        </div>
+        <div style="display:flex; gap:8px;">
+            <button type="submit" class="default">Import CSV</button>
+            <a href="{% url 'admin:customers_customer_changelist' %}">Back to customers</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

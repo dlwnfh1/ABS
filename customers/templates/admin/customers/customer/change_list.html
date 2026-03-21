@@ -1,0 +1,244 @@
+{% extends "admin/change_list.html" %}
+
+{% block extrahead %}
+{{ block.super }}
+<style>
+    .codex-toast-stack {
+        position: fixed;
+        top: 16px;
+        right: 16px;
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        max-width: 360px;
+    }
+
+    .codex-toast {
+        background: #111827;
+        color: #fff;
+        border-radius: 10px;
+        padding: 12px 14px;
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.18);
+        font-size: 13px;
+        line-height: 1.4;
+        opacity: 0;
+        transform: translateY(-8px);
+        transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+
+    .codex-toast.show {
+        opacity: 1;
+        transform: translateY(0);
+    }
+
+    .top-scrollbar {
+        position: sticky;
+        top: 0;
+        z-index: 50;
+        overflow-x: auto;
+        overflow-y: hidden;
+        margin: 12px 0 8px 0;
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 6px;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    }
+
+    .top-scrollbar-inner {
+        height: 10px;
+    }
+</style>
+{% endblock %}
+
+{% block object-tools-items %}
+{{ block.super }}
+<li>
+    <a href="{{ import_csv_url }}">Import CSV</a>
+</li>
+<li>
+    <a href="{{ export_csv_url }}">Export CSV</a>
+</li>
+{% endblock %}
+
+{% block content_title %}
+{{ block.super }}
+<div style="margin: 12px 0 4px 0;">
+    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+        {% for item in workflow_filters %}
+        <a href="{{ item.url }}" style="padding:6px 10px; border:1px solid #d1d5db; border-radius:999px; text-decoration:none; {% if item.active %}background:#111827;color:#fff;border-color:#111827;{% else %}background:#fff;color:#111827;{% endif %}">
+            {{ item.label }}
+        </a>
+        {% endfor %}
+    </div>
+    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+        {% for item in active_filters %}
+        <a href="{{ item.url }}" style="padding:6px 10px; border:1px solid #d1d5db; border-radius:999px; text-decoration:none; {% if item.active %}background:#1f2937;color:#fff;border-color:#1f2937;{% else %}background:#fff;color:#111827;{% endif %}">
+            {{ item.label }}
+        </a>
+        {% endfor %}
+    </div>
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        {% for item in term_filters %}
+        <a href="{{ item.url }}" style="padding:6px 10px; border:1px solid #d1d5db; border-radius:999px; text-decoration:none; {% if item.active %}background:#374151;color:#fff;border-color:#374151;{% else %}background:#fff;color:#111827;{% endif %}">
+            {{ item.label }}
+        </a>
+        {% endfor %}
+    </div>
+    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
+        {% if showing_all_filtered %}
+        <a href="{{ show_paginated_url }}" style="padding:6px 10px; border:1px solid #d1d5db; border-radius:999px; text-decoration:none; background:#fff;color:#111827;">
+            Show paginated results
+        </a>
+        {% else %}
+        <a href="{{ show_all_filtered_url }}" style="padding:6px 10px; border:1px solid #d1d5db; border-radius:999px; text-decoration:none; background:#fff;color:#111827;">
+            Show all filtered results
+        </a>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block result_list %}
+<div id="top-scrollbar" class="top-scrollbar" style="display:none;">
+    <div id="top-scrollbar-inner" class="top-scrollbar-inner"></div>
+</div>
+{{ block.super }}
+<script>
+    (function () {
+        var customFilterQuery = "{{ custom_preserved_filters|default:''|escapejs }}";
+        var popupMessages = [
+            {% if messages %}
+                {% for message in messages %}
+                    "{{ message|escapejs }}",
+                {% endfor %}
+            {% endif %}
+        ].filter(Boolean);
+        if (popupMessages.length) {
+            var stack = document.createElement("div");
+            stack.className = "codex-toast-stack";
+            document.body.appendChild(stack);
+            popupMessages.forEach(function (message, index) {
+                var toast = document.createElement("div");
+                toast.className = "codex-toast";
+                toast.textContent = message;
+                stack.appendChild(toast);
+                window.setTimeout(function () {
+                    toast.classList.add("show");
+                }, 50 + (index * 80));
+                window.setTimeout(function () {
+                    toast.classList.remove("show");
+                }, 3400 + (index * 120));
+                window.setTimeout(function () {
+                    if (toast.parentNode) {
+                        toast.parentNode.removeChild(toast);
+                    }
+                    if (!stack.children.length && stack.parentNode) {
+                        stack.parentNode.removeChild(stack);
+                    }
+                }, 3800 + (index * 120));
+            });
+        }
+
+        function applyCustomFiltersToLinks() {
+            if (!customFilterQuery) {
+                return;
+            }
+            var preserved = new URLSearchParams(customFilterQuery);
+            document.querySelectorAll(".paginator a, #result_list th a").forEach(function (link) {
+                var url = new URL(link.href, window.location.origin);
+                preserved.forEach(function (value, key) {
+                    if (!url.searchParams.has(key)) {
+                        url.searchParams.set(key, value);
+                    }
+                });
+                link.href = url.pathname + "?" + url.searchParams.toString();
+            });
+
+            document.querySelectorAll("form[method='get']").forEach(function (form) {
+                preserved.forEach(function (value, key) {
+                    var input = form.querySelector("input[name='" + key + "']");
+                    if (!input) {
+                        input = document.createElement("input");
+                        input.type = "hidden";
+                        input.name = key;
+                        form.appendChild(input);
+                    }
+                    input.value = value;
+                });
+            });
+        }
+
+        var topBar = document.getElementById("top-scrollbar");
+        var topInner = document.getElementById("top-scrollbar-inner");
+        if (!topBar || !topInner) {
+            return;
+        }
+
+        var resultContainer = null;
+
+        function findScrollableContainer() {
+            var preferred = document.querySelector(".results");
+            if (preferred && preferred.scrollWidth > preferred.clientWidth + 2) {
+                return preferred;
+            }
+            var resultList = document.getElementById("result_list");
+            if (resultList && resultList.parentElement && resultList.parentElement.scrollWidth > resultList.parentElement.clientWidth + 2) {
+                return resultList.parentElement;
+            }
+            return null;
+        }
+
+        function syncScrollbar() {
+            resultContainer = findScrollableContainer();
+            if (!resultContainer) {
+                topBar.style.display = "none";
+                return;
+            }
+            var table = resultContainer.querySelector("table");
+            if (!table) {
+                topBar.style.display = "none";
+                return;
+            }
+            var needsScroll = table.scrollWidth > resultContainer.clientWidth;
+            topBar.style.display = needsScroll ? "block" : "none";
+            topInner.style.width = table.scrollWidth + "px";
+            topBar.scrollLeft = resultContainer.scrollLeft;
+        }
+
+        topBar.addEventListener("scroll", function () {
+            if (!resultContainer) {
+                return;
+            }
+            resultContainer.scrollLeft = topBar.scrollLeft;
+        });
+
+        function bindResultScroll() {
+            if (!resultContainer || resultContainer.dataset.topScrollBound === "1") {
+                return;
+            }
+            resultContainer.addEventListener("scroll", function () {
+                topBar.scrollLeft = resultContainer.scrollLeft;
+            });
+            resultContainer.dataset.topScrollBound = "1";
+        }
+
+        window.addEventListener("load", syncScrollbar);
+        window.addEventListener("resize", function () {
+            syncScrollbar();
+            bindResultScroll();
+        });
+        setTimeout(function () {
+            syncScrollbar();
+            bindResultScroll();
+        }, 0);
+        setTimeout(function () {
+            syncScrollbar();
+            bindResultScroll();
+        }, 250);
+        applyCustomFiltersToLinks();
+        syncScrollbar();
+        bindResultScroll();
+    })();
+</script>
+{% endblock %}

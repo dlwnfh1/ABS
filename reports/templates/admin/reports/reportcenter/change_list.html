@@ -1,0 +1,60 @@
+{% extends "admin/base_site.html" %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+    .report-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 16px;
+        margin-top: 18px;
+    }
+
+    .report-card {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 18px;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    }
+
+    .report-card h2 {
+        margin: 0 0 8px 0;
+        font-size: 20px;
+    }
+
+    .report-card p {
+        margin: 0 0 16px 0;
+        color: #4b5563;
+        line-height: 1.5;
+    }
+
+    .report-card a {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 38px;
+        padding: 0 14px;
+        border-radius: 999px;
+        background: #4b5563;
+        color: #fff;
+        text-decoration: none;
+        font-weight: 700;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+    <h1>Reports</h1>
+    <div class="report-grid">
+        {% for item in report_links %}
+        <div class="report-card">
+            <h2>{{ item.title }}</h2>
+            <p>{{ item.description }}</p>
+            <a href="{{ item.url }}">Open report</a>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

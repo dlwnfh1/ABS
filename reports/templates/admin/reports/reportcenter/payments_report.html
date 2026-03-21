@@ -1,0 +1,170 @@
+{% extends "admin/base_site.html" %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+    .report-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-bottom: 16px;
+    }
+
+    .report-header a {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 36px;
+        padding: 0 12px;
+        border-radius: 999px;
+        background: #4b5563;
+        color: #fff;
+        font-weight: 700;
+        text-decoration: none;
+    }
+
+    .payments-filter {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: end;
+        margin: 0 0 16px 0;
+        padding: 14px;
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+    }
+
+    .payments-filter label {
+        display: block;
+        font-weight: 700;
+        margin-bottom: 4px;
+    }
+
+    .payments-filter input {
+        min-height: 36px;
+        padding: 0 10px;
+    }
+
+    .payments-filter button {
+        min-height: 36px;
+        padding: 0 14px;
+    }
+
+    .report-table {
+        width: 100%;
+        border-collapse: collapse;
+        background: #fff;
+    }
+
+    .report-table th,
+    .report-table td {
+        padding: 10px 12px;
+        border-bottom: 1px solid #e5e7eb;
+        text-align: left;
+        vertical-align: top;
+    }
+
+    .report-table th {
+        background: #f9fafb;
+        font-weight: 700;
+        white-space: nowrap;
+    }
+
+    .report-table td.num,
+    .report-table th.num {
+        text-align: right;
+        white-space: nowrap;
+    }
+
+    .payments-totals {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin: 0 0 16px 0;
+    }
+
+    .payments-total-card {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 12px 14px;
+        min-width: 180px;
+    }
+
+    .payments-total-card strong {
+        display: block;
+        font-size: 20px;
+        margin-top: 6px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+    <div class="report-header">
+        <h1>Payments Report</h1>
+        <a href="{{ reports_home_url }}">Back to Reports</a>
+    </div>
+
+    <form method="get" class="payments-filter">
+        <div>
+            <label for="id_date_from">Date from</label>
+            <input type="date" id="id_date_from" name="date_from" value="{{ date_from }}">
+        </div>
+        <div>
+            <label for="id_date_to">Date to</label>
+            <input type="date" id="id_date_to" name="date_to" value="{{ date_to }}">
+        </div>
+        <div>
+            <button type="submit">Run report</button>
+        </div>
+    </form>
+
+    <div class="payments-totals">
+        <div class="payments-total-card">
+            Total Payments
+            <strong>${{ total_amount|floatformat:2 }}</strong>
+        </div>
+        {% for method, amount in method_totals.items %}
+        <div class="payments-total-card">
+            {{ method }}
+            <strong>${{ amount|floatformat:2 }}</strong>
+        </div>
+        {% endfor %}
+    </div>
+
+    <table class="report-table">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Customer</th>
+                <th>Account #</th>
+                <th class="num">Amount</th>
+                <th>Method</th>
+                <th>Reference</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for payment in payments %}
+            <tr>
+                <td>{{ payment.payment_date|date:"m/d/Y" }}</td>
+                <td>{{ payment.customer.name }}</td>
+                <td>{{ payment.customer.account_number }}</td>
+                <td class="num">${{ payment.amount|floatformat:2 }}</td>
+                <td>{{ payment.get_method_display }}</td>
+                <td>{{ payment.reference_number|default:"-" }}</td>
+                <td><a href="{% url 'admin:payments_payment_change' payment.pk %}">View payment</a></td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="7">No payments found for this date range.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

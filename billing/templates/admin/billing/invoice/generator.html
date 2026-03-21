@@ -1,0 +1,178 @@
+{% extends "admin/base_site.html" %}
+
+{% block extrahead %}
+{{ block.super }}
+<style>
+    .codex-toast-stack {
+        position: fixed;
+        top: 16px;
+        right: 16px;
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        max-width: 360px;
+    }
+
+    .codex-toast {
+        background: #111827;
+        color: #fff;
+        border-radius: 10px;
+        padding: 12px 14px;
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.18);
+        font-size: 13px;
+        line-height: 1.4;
+        opacity: 0;
+        transform: translateY(-8px);
+        transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+
+    .codex-toast.show {
+        opacity: 1;
+        transform: translateY(0);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+    <h1>Invoice Generator</h1>
+    <p>Select customers to generate the next invoice. Before the issue date, normal generation is blocked, but force generation is available.</p>
+    <form method="get" style="margin-bottom: 1rem;">
+        <label for="id_q">Search</label>
+        <input id="id_q" type="text" name="q" value="{{ query }}" placeholder="Customer or account #">
+        <label for="id_status">Status</label>
+        <select id="id_status" name="status">
+            <option value="all"{% if status_filter == "all" %} selected{% endif %}>All</option>
+            <option value="ready"{% if status_filter == "ready" %} selected{% endif %}>Ready</option>
+            <option value="not_due"{% if status_filter == "not_due" %} selected{% endif %}>Not Due</option>
+            <option value="already_exists"{% if status_filter == "already_exists" %} selected{% endif %}>Already Issued</option>
+        </select>
+        <label>
+            <input type="checkbox" name="due_only" value="1"{% if show_due_only %} checked{% endif %}>
+            Due only
+        </label>
+        <button type="submit">Filter</button>
+    </form>
+    <form method="post">
+        {% csrf_token %}
+        <div style="margin-bottom: 1rem; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            <button type="submit" name="action" value="generate_all_due" class="default">Generate All Due Through Today</button>
+            <button type="submit" name="action" value="force_generate_all_due">Force Generate All Due</button>
+            <button type="submit" name="action" value="generate_selected">Generate Next Only</button>
+            <button type="submit" name="action" value="force_generate_selected">Force Generate Next Only</button>
+            <label style="display:flex; align-items:center; gap:6px; margin-left:12px;">
+                <input type="checkbox" id="select-all-generator">
+                Select all visible
+            </label>
+            <button type="button" id="clear-all-generator">Clear all</button>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Select</th>
+                    <th>Account #</th>
+                    <th>Customer</th>
+                    <th>Next Billing Period</th>
+                    <th>Issue Date</th>
+                    <th>Due Date</th>
+                    <th>Status</th>
+                    <th>Message</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for candidate in candidates %}
+                <tr>
+                    <td>
+                        {% if candidate.status != "already_exists" %}
+                        <input type="checkbox" name="customer_ids" value="{{ candidate.customer.pk }}">
+                        {% endif %}
+                    </td>
+                    <td>{{ candidate.customer.account_number }}</td>
+                    <td>{{ candidate.customer.name }}</td>
+                    <td>{{ candidate.period_start|date:"m/d/Y" }} - {{ candidate.period_end|date:"m/d/Y" }}</td>
+                    <td>{{ candidate.issue_date|date:"m/d/Y" }}</td>
+                    <td>{{ candidate.due_date|date:"m/d/Y" }}</td>
+                    <td>{{ candidate.status }}</td>
+                    <td>{{ candidate.message }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="8">No invoice generation candidates.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </form>
+</div>
+<script>
+    (function () {
+        var popupMessages = [
+            {% if messages %}
+                {% for message in messages %}
+                    "{{ message|escapejs }}",
+                {% endfor %}
+            {% endif %}
+        ].filter(Boolean);
+        if (popupMessages.length) {
+            var stack = document.createElement("div");
+            stack.className = "codex-toast-stack";
+            document.body.appendChild(stack);
+            popupMessages.forEach(function (message, index) {
+                var toast = document.createElement("div");
+                toast.className = "codex-toast";
+                toast.textContent = message;
+                stack.appendChild(toast);
+                window.setTimeout(function () {
+                    toast.classList.add("show");
+                }, 50 + (index * 80));
+                window.setTimeout(function () {
+                    toast.classList.remove("show");
+                }, 3400 + (index * 120));
+                window.setTimeout(function () {
+                    if (toast.parentNode) {
+                        toast.parentNode.removeChild(toast);
+                    }
+                    if (!stack.children.length && stack.parentNode) {
+                        stack.parentNode.removeChild(stack);
+                    }
+                }, 3800 + (index * 120));
+            });
+        }
+
+        var selectAll = document.getElementById("select-all-generator");
+        var clearAll = document.getElementById("clear-all-generator");
+        var checkboxes = Array.prototype.slice.call(document.querySelectorAll('input[name="customer_ids"]'));
+
+        if (selectAll) {
+            selectAll.addEventListener("change", function () {
+                checkboxes.forEach(function (checkbox) {
+                    checkbox.checked = selectAll.checked;
+                });
+            });
+        }
+
+        if (clearAll) {
+            clearAll.addEventListener("click", function () {
+                checkboxes.forEach(function (checkbox) {
+                    checkbox.checked = false;
+                });
+                if (selectAll) {
+                    selectAll.checked = false;
+                }
+            });
+        }
+
+        checkboxes.forEach(function (checkbox) {
+            checkbox.addEventListener("change", function () {
+                if (!selectAll) {
+                    return;
+                }
+                selectAll.checked = checkboxes.length > 0 && checkboxes.every(function (item) {
+                    return item.checked;
+                });
+            });
+        });
+    })();
+</script>
+{% endblock %}

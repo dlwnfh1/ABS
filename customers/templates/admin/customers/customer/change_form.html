@@ -1,0 +1,180 @@
+{% extends "admin/change_form.html" %}
+
+{% block extrahead %}
+{{ block.super }}
+<style>
+    .codex-toast-stack {
+        position: fixed;
+        top: 16px;
+        right: 16px;
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        max-width: 360px;
+    }
+
+    .codex-toast {
+        background: #111827;
+        color: #fff;
+        border-radius: 10px;
+        padding: 12px 14px;
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.18);
+        font-size: 13px;
+        line-height: 1.4;
+        opacity: 0;
+        transform: translateY(-8px);
+        transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+
+    .codex-toast.show {
+        opacity: 1;
+        transform: translateY(0);
+    }
+
+    .change-form .object-tools {
+        float: none;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 12px 0 18px 0;
+        padding: 0;
+    }
+
+    .change-form .object-tools li {
+        float: none;
+        margin: 0;
+        height: auto;
+    }
+
+    .change-form .object-tools a {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 38px;
+        padding: 0 14px;
+        border-radius: 999px;
+        background: #4b5563;
+        color: #fff;
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 0.01em;
+        text-transform: uppercase;
+        text-decoration: none;
+        box-shadow: none;
+    }
+
+    .change-form .object-tools a:hover {
+        background: #374151;
+    }
+
+    .customer-summary-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 12px;
+        margin: 4px 0 24px 0;
+    }
+
+    .customer-summary-card {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        padding: 14px 16px;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    }
+
+    .customer-summary-card.alert {
+        border-color: #fecaca;
+        background: #fef2f2;
+    }
+
+    .customer-summary-label {
+        color: #6b7280;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        margin-bottom: 6px;
+    }
+
+    .customer-summary-value {
+        color: #111827;
+        font-size: 18px;
+        font-weight: 700;
+        line-height: 1.3;
+    }
+</style>
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+        var popupMessages = [
+            {% if messages %}
+                {% for message in messages %}
+                    "{{ message|escapejs }}",
+                {% endfor %}
+            {% endif %}
+        ].filter(Boolean);
+        if (popupMessages.length) {
+            var stack = document.createElement("div");
+            stack.className = "codex-toast-stack";
+            document.body.appendChild(stack);
+            popupMessages.forEach(function (message, index) {
+                var toast = document.createElement("div");
+                toast.className = "codex-toast";
+                toast.textContent = message;
+                stack.appendChild(toast);
+                window.setTimeout(function () {
+                    toast.classList.add("show");
+                }, 50 + (index * 80));
+                window.setTimeout(function () {
+                    toast.classList.remove("show");
+                }, 3400 + (index * 120));
+                window.setTimeout(function () {
+                    if (toast.parentNode) {
+                        toast.parentNode.removeChild(toast);
+                    }
+                    if (!stack.children.length && stack.parentNode) {
+                        stack.parentNode.removeChild(stack);
+                    }
+                }, 3800 + (index * 120));
+            });
+        }
+    });
+</script>
+{% endblock %}
+
+{% block object-tools-items %}
+{{ block.super }}
+{% if change and not is_popup %}
+<li>
+    <a href="{{ add_payment_url }}"><strong>Add Payment</strong></a>
+</li>
+<li>
+    <a href="{{ view_payments_url }}">View Payments</a>
+</li>
+<li>
+    <a href="{{ generate_all_due_url }}"><strong>Generate All Due</strong></a>
+</li>
+<li>
+    <a href="{{ force_generate_all_due_url }}"><strong>Force Generate All Due</strong></a>
+</li>
+<li>
+    <a href="{{ generate_next_url }}">Generate Next Invoice</a>
+</li>
+<li>
+    <a href="{{ force_generate_next_url }}">Force Generate Next</a>
+</li>
+{% endif %}
+{% endblock %}
+
+{% block form_top %}
+{% if summary_cards %}
+<div class="customer-summary-grid">
+    {% for card in summary_cards %}
+    <div class="customer-summary-card {% if card.tone == 'alert' %}alert{% endif %}">
+        <div class="customer-summary-label">{{ card.label }}</div>
+        <div class="customer-summary-value">{% if card.safe %}{{ card.value|safe }}{% else %}{{ card.value }}{% endif %}</div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+{{ block.super }}
+{% endblock %}
