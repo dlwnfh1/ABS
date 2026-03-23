@@ -31,6 +31,7 @@ class ReportCenterAdmin(admin.ModelAdmin):
         urls = super().get_urls()
         custom_urls = [
             path("ar-aging/", self.admin_site.admin_view(self.ar_aging_view), name="reports_reportcenter_ar_aging"),
+            path("customer-statement/", self.admin_site.admin_view(self.customer_statement_view), name="reports_reportcenter_customer_statement"),
             path("payments-report/", self.admin_site.admin_view(self.payments_report_view), name="reports_reportcenter_payments_report"),
         ]
         return custom_urls + urls
@@ -53,10 +54,53 @@ class ReportCenterAdmin(admin.ModelAdmin):
                         "description": "Payment activity by date range with totals and payment methods.",
                         "url": reverse("admin:reports_reportcenter_payments_report"),
                     },
+                    {
+                        "title": "Customer Statement",
+                        "description": "Invoice history, payment history, and current balance for a single customer.",
+                        "url": reverse("admin:reports_reportcenter_customer_statement"),
+                    },
                 ],
             }
         )
         return TemplateResponse(request, "admin/reports/reportcenter/change_list.html", extra_context)
+
+    def customer_statement_view(self, request):
+        customer_model = Invoice._meta.get_field("customer").related_model
+        customers = customer_model.objects.order_by("name", "account_number")
+        customer_id = request.GET.get("customer")
+        selected_customer = None
+        invoices = []
+        payments = []
+        open_balance = Decimal("0.00")
+        last_payment = None
+
+        if customer_id:
+            selected_customer = customers.filter(pk=customer_id).first()
+            if selected_customer:
+                today = timezone.localdate()
+                invoices = list(
+                    selected_customer.invoices.exclude(status=Invoice.STATUS_VOID).order_by("-period_start", "-id")
+                )
+                payments = list(
+                    selected_customer.payments.prefetch_related("allocations__invoice").order_by("-payment_date", "-id")
+                )
+                open_balance = selected_customer.open_balance_as_of(today)
+                last_payment = payments[0] if payments else None
+
+        context = {
+            **self.admin_site.each_context(request),
+            "opts": self.model._meta,
+            "title": "Customer Statement",
+            "customers": customers,
+            "selected_customer": selected_customer,
+            "selected_customer_id": int(customer_id) if customer_id and customer_id.isdigit() else None,
+            "invoices": invoices,
+            "payments": payments,
+            "open_balance": open_balance,
+            "last_payment": last_payment,
+            "reports_home_url": reverse("admin:reports_reportcenter_changelist"),
+        }
+        return TemplateResponse(request, "admin/reports/reportcenter/customer_statement.html", context)
 
     def ar_aging_view(self, request):
         today = timezone.localdate()
@@ -83,7 +127,7 @@ class ReportCenterAdmin(admin.ModelAdmin):
             for invoice in invoices:
                 if invoice.issue_date and invoice.issue_date > today:
                     continue
-                amount = invoice.total_due or Decimal("0.00")
+                amount = invoice.outstanding_amount_as_of(today)
                 if amount <= Decimal("0.00"):
                     continue
 

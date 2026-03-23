@@ -231,16 +231,15 @@ class CustomerAdmin(admin.ModelAdmin):
         extra_context["summary_cards"] = self._build_summary_cards(customer)
         return super().change_view(request, object_id, form_url=form_url, extra_context=extra_context)
 
+    def _customer_open_balance(self, customer, as_of_date=None):
+        as_of_date = as_of_date or timezone.localdate()
+        return customer.open_balance_as_of(as_of_date)
+
     def _build_summary_cards(self, customer):
         candidate = self._candidate_for(customer)
         latest_invoice = self._latest_invoice(customer)
-        open_balance = Decimal("0.00")
         today = timezone.localdate()
-        invoices = customer.invoices.exclude(status=Invoice.STATUS_VOID).order_by("-period_start", "-id")
-        for invoice in invoices:
-            if invoice.issue_date and invoice.issue_date > today:
-                continue
-            open_balance += invoice.total_due or Decimal("0.00")
+        open_balance = self._customer_open_balance(customer, as_of_date=today)
 
         last_payment = customer.payments.order_by("-payment_date", "-id").first()
         status_label = self.next_invoice_status(customer)
@@ -725,16 +724,8 @@ class CustomerAdmin(admin.ModelAdmin):
 
     @admin.display(description="Open Balance")
     def open_balance(self, obj):
-        invoices = getattr(obj, "prefetched_invoices", None)
-        if invoices is None:
-            invoices = obj.invoices.exclude(status=Invoice.STATUS_VOID)
-        total = Decimal("0.00")
-        today = timezone.localdate()
-        for invoice in invoices:
-            if invoice.issue_date and invoice.issue_date > today:
-                continue
-            total += invoice.total_due or Decimal("0.00")
-        return f"${total.quantize(Decimal('0.01')):.2f}"
+        total = self._customer_open_balance(obj, as_of_date=timezone.localdate())
+        return f"${total:.2f}"
 
     @admin.display(ordering="last_payment_date", description="Last Payment")
     def last_payment_date_display(self, obj):

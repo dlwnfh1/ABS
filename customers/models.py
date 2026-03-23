@@ -4,6 +4,7 @@ from decimal import Decimal
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import Sum
+from django.utils import timezone
 
 
 class Customer(models.Model):
@@ -43,6 +44,29 @@ class Customer(models.Model):
 
     def can_generate_initial_invoice(self) -> bool:
         return bool(self.first_billing_date and self.is_active and self.services.filter(is_active=True).exists())
+
+    def open_balance_as_of(self, as_of_date=None) -> Decimal:
+        from billing.models import Invoice
+
+        as_of_date = as_of_date or timezone.localdate()
+        latest_issued_invoice = (
+            self.invoices.exclude(status=Invoice.STATUS_VOID)
+            .filter(issue_date__lte=as_of_date)
+            .order_by("-period_start", "-id")
+            .first()
+        )
+        if not latest_issued_invoice:
+            return Decimal("0.00")
+
+        gross_total = latest_issued_invoice.statement_base_totals()["gross_total"]
+        payments_after_issue = (
+            self.payments.filter(payment_date__gt=latest_issued_invoice.issue_date, payment_date__lte=as_of_date)
+            .aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
+        )
+        balance = Decimal(gross_total) - Decimal(payments_after_issue)
+        if balance < Decimal("0.00"):
+            balance = Decimal("0.00")
+        return balance.quantize(Decimal("0.01"))
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)

@@ -113,6 +113,21 @@ class BillingWorkflowTests(TestCase):
         self.assertEqual(items[0].line_type, InvoiceItem.LINE_CARRYOVER)
         self.assertEqual(items[0].amount, Decimal("100.00"))
 
+    def test_customer_open_balance_matches_latest_invoice_less_later_payments(self):
+        first_invoice = Invoice.objects.get(customer=self.customer, auto_generated=False)
+        second_invoice = first_invoice.generate_next_invoice()
+        third_invoice = second_invoice.generate_next_invoice()
+
+        Payment.objects.create(
+            customer=self.customer,
+            amount=Decimal("45.00"),
+            payment_date=date(2026, 3, 23),
+            method=Payment.METHOD_CHECK,
+            reference_number="CHK-3",
+        )
+
+        self.assertEqual(self.customer.open_balance_as_of(date(2026, 3, 23)), Decimal("175.00"))
+
     def test_generate_due_invoices_only_after_issue_date(self):
         invoice = Invoice.objects.get(customer=self.customer, auto_generated=False)
         generated = Invoice.generate_due_invoices(as_of_date=date(2026, 3, 16))

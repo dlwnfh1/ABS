@@ -1,10 +1,18 @@
+import base64
+import hashlib
+from pathlib import Path
+from io import BytesIO
+
 from django.contrib import admin, messages
 from django.contrib.admin.views.main import ChangeList
+from django.http import HttpResponse
 from django.shortcuts import redirect
+from django.template.loader import render_to_string
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
 from django.utils.html import format_html
 from django.utils import timezone
+from xhtml2pdf import pisa
 
 from .models import Invoice, InvoiceItem
 
@@ -127,6 +135,16 @@ class InvoiceAdmin(admin.ModelAdmin):
                 self.admin_site.admin_view(self.preview_view),
                 name="billing_invoice_preview",
             ),
+            path(
+                "<path:object_id>/pdf/",
+                self.admin_site.admin_view(self.pdf_view),
+                name="billing_invoice_pdf",
+            ),
+            path(
+                "<path:object_id>/print/",
+                self.admin_site.admin_view(self.print_pdf_view),
+                name="billing_invoice_print",
+            ),
         ]
         return custom_urls + urls
 
@@ -159,6 +177,8 @@ class InvoiceAdmin(admin.ModelAdmin):
     def change_view(self, request, object_id, form_url="", extra_context=None):
         extra_context = extra_context or {}
         extra_context["invoice_preview_url"] = reverse("admin:billing_invoice_preview", args=[object_id])
+        extra_context["invoice_pdf_url"] = reverse("admin:billing_invoice_pdf", args=[object_id])
+        extra_context["invoice_print_url"] = reverse("admin:billing_invoice_print", args=[object_id])
         return super().change_view(request, object_id, form_url=form_url, extra_context=extra_context)
 
     def ar_report_view(self, request):
@@ -286,14 +306,114 @@ class InvoiceAdmin(admin.ModelAdmin):
 
     def preview_view(self, request, object_id):
         invoice = self.get_object(request, object_id)
-        context = {
+        context = self._invoice_document_context(request, invoice)
+        return TemplateResponse(request, "admin/billing/invoice/preview.html", context)
+
+    def pdf_view(self, request, object_id):
+        return self._render_pdf_response(request, object_id, as_attachment=True)
+
+    def print_pdf_view(self, request, object_id):
+        return self._render_pdf_response(request, object_id, as_attachment=False)
+
+    def _render_pdf_response(self, request, object_id, as_attachment):
+        invoice = self.get_object(request, object_id)
+        context = self._invoice_document_context(request, invoice)
+        html = render_to_string("admin/billing/invoice/pdf.html", context, request=request)
+        pdf_buffer = BytesIO()
+        self._ensure_md5_compat()
+        pdf = pisa.CreatePDF(html, dest=pdf_buffer)
+        if pdf.err:
+            self.message_user(request, "PDF generation failed.", level=messages.ERROR)
+            return redirect("admin:billing_invoice_preview", object_id=object_id)
+
+        response = HttpResponse(pdf_buffer.getvalue(), content_type="application/pdf")
+        disposition = "attachment" if as_attachment else "inline"
+        response["Content-Disposition"] = f'{disposition}; filename="{invoice.invoice_number}.pdf"'
+        response["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response["Pragma"] = "no-cache"
+        response["Expires"] = "0"
+        return response
+
+    @staticmethod
+    def _ensure_md5_compat():
+        original_md5 = hashlib.md5
+
+        def md5_compat(*args, **kwargs):
+            kwargs.pop("usedforsecurity", None)
+            if len(args) > 1:
+                args = args[:1]
+            return original_md5(*args, **kwargs)
+
+        hashlib.md5 = md5_compat
+
+        module_patches = [
+            ("reportlab.pdfbase.pdfdoc", "md5"),
+            ("reportlab.pdfbase.cidfonts", "md5"),
+            ("reportlab.lib.utils", "md5"),
+            ("reportlab.lib.fontfinder", "md5"),
+        ]
+        for module_name, attr_name in module_patches:
+            try:
+                module = __import__(module_name, fromlist=[attr_name])
+                setattr(module, attr_name, md5_compat)
+            except Exception:
+                pass
+
+
+    @staticmethod
+    def _logo_symbol_data_uri():
+        logo_path = Path(__file__).resolve().parent.parent / "logo_candidate.png"
+        if not logo_path.exists():
+            return ""
+        encoded = base64.b64encode(logo_path.read_bytes()).decode("ascii")
+        return f"data:image/png;base64,{encoded}"
+
+    def _invoice_document_context(self, request, invoice):
+        today = timezone.localdate()
+        latest_issued_invoice = (
+            invoice.customer.invoices.exclude(status=Invoice.STATUS_VOID)
+            .filter(issue_date__lte=today)
+            .order_by("-period_start", "-id")
+            .first()
+        )
+        items = list(invoice.items.order_by("period_start", "id"))
+        padded_items = [
+            {
+                "description": item.description,
+                "period_start": item.period_start,
+                "period_end": item.period_end,
+                "amount": item.amount,
+                "line_type": item.line_type,
+            }
+            for item in items
+        ]
+        while len(padded_items) < 4:
+            padded_items.append(
+                {
+                    "description": "",
+                    "period_start": None,
+                    "period_end": None,
+                    "amount": None,
+                    "line_type": "",
+                }
+            )
+        padded_items = padded_items[:4]
+
+        return {
             **self.admin_site.each_context(request),
             "opts": self.model._meta,
             "title": f"Invoice Preview {invoice.invoice_number}",
             "invoice": invoice,
-            "items": invoice.items.order_by("period_start", "id"),
+            "items": items,
+            "padded_items": padded_items,
+            "current_balance_due": invoice.customer.open_balance_as_of(today) if latest_issued_invoice and latest_issued_invoice.pk == invoice.pk else invoice.amount_due_for_allocation(today),
+            "preview_date": today,
+            "is_latest_issued_invoice": bool(latest_issued_invoice and latest_issued_invoice.pk == invoice.pk),
+            "invoice_pdf_url": reverse("admin:billing_invoice_pdf", args=[invoice.pk]),
+            "invoice_print_url": reverse("admin:billing_invoice_print", args=[invoice.pk]),
+            "pdf_cache_buster": timezone.now().strftime("%Y%m%d%H%M%S%f"),
+            "logo_symbol_data_uri": self._logo_symbol_data_uri(),
         }
-        return TemplateResponse(request, "admin/billing/invoice/preview.html", context)
 
     def generator_view(self, request):
         candidates = Invoice.get_generation_candidates()
