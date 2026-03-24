@@ -99,7 +99,7 @@ class Customer(models.Model):
 
 class Service(models.Model):
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE, related_name="services")
-    service_name = models.CharField(max_length=255, default="Primary Service")
+    service_name = models.CharField(max_length=255, default="Alarm Monitoring Service")
     service_address1 = models.CharField(max_length=255)
     service_address2 = models.CharField(max_length=255, blank=True)
     activation_date = models.DateField(blank=True, null=True)
@@ -115,5 +115,11 @@ class Service(models.Model):
         return f"{self.customer.account_number} - {self.service_name}"
 
     def save(self, *args, **kwargs):
+        if not self.service_name:
+            self.service_name = "Alarm Monitoring Service"
+        if not self.service_address1:
+            self.service_address1 = self.customer.billing_address1
+        if not self.service_address2:
+            self.service_address2 = self.customer.billing_address2
         super().save(*args, **kwargs)
         self.customer.ensure_initial_invoice()

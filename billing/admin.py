@@ -376,7 +376,8 @@ class InvoiceAdmin(admin.ModelAdmin):
             .order_by("-period_start", "-id")
             .first()
         )
-        items = list(invoice.items.order_by("period_start", "id"))
+        source_items = list(invoice.items.order_by("period_start", "id"))
+        items = list(reversed(source_items))
         padded_items = [
             {
                 "description": item.description,
@@ -387,7 +388,19 @@ class InvoiceAdmin(admin.ModelAdmin):
             }
             for item in items
         ]
-        while len(padded_items) < 4:
+        if len(padded_items) > 5:
+            overflow_items = padded_items[4:]
+            padded_items = padded_items[:4]
+            padded_items.append(
+                {
+                    "description": "Additional prior billing periods",
+                    "period_start": overflow_items[-1]["period_start"],
+                    "period_end": overflow_items[0]["period_end"],
+                    "amount": sum(item["amount"] for item in overflow_items),
+                    "line_type": "rollup",
+                }
+            )
+        while len(padded_items) < 5:
             padded_items.append(
                 {
                     "description": "",
@@ -397,7 +410,18 @@ class InvoiceAdmin(admin.ModelAdmin):
                     "line_type": "",
                 }
             )
-        padded_items = padded_items[:4]
+
+        billing_to = invoice.customer.billing_address1
+        if invoice.customer.billing_address2:
+            billing_to = f"{billing_to}, {invoice.customer.billing_address2}"
+
+        primary_service = invoice.customer.services.filter(is_active=True).order_by("id").first()
+        if primary_service:
+            service_at = primary_service.service_address1
+            if primary_service.service_address2:
+                service_at = f"{service_at}, {primary_service.service_address2}"
+        else:
+            service_at = billing_to
 
         return {
             **self.admin_site.each_context(request),
@@ -413,6 +437,8 @@ class InvoiceAdmin(admin.ModelAdmin):
             "invoice_print_url": reverse("admin:billing_invoice_print", args=[invoice.pk]),
             "pdf_cache_buster": timezone.now().strftime("%Y%m%d%H%M%S%f"),
             "logo_symbol_data_uri": self._logo_symbol_data_uri(),
+            "billing_to_display": billing_to,
+            "service_at_display": service_at,
         }
 
     def generator_view(self, request):

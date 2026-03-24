@@ -5,7 +5,7 @@
     <style>
         @page {
             size: letter;
-            margin: 14pt 16pt 14pt 16pt;
+            margin: 40pt 38pt 12pt 24pt;
         }
 
         body {
@@ -17,7 +17,7 @@
         }
 
         table {
-            width: 100%;
+            width: 98%;
             border-collapse: collapse;
         }
 
@@ -57,41 +57,41 @@
         .remit-panel {
             border: 1px solid #d2dbe3;
             background: #ffffff;
-            padding: 5pt 7pt 4pt 7pt;
+            padding: 4.5pt 6.5pt 3.5pt 6.5pt;
         }
 
         .section-label,
         .remit-title,
         .meta-title {
             color: #33536f;
-            font-size: 6.3pt;
+            font-size: 7pt;
             text-transform: uppercase;
-            letter-spacing: 1.1pt;
+            letter-spacing: 0.85pt;
             font-weight: bold;
-            margin-bottom: 1.5pt;
+            margin-bottom: 1.2pt;
         }
 
         .field-label {
             color: #65788c;
-            font-size: 6.2pt;
+            font-size: 6.8pt;
             text-transform: uppercase;
-            margin-bottom: 1.5pt;
+            margin-bottom: 1.1pt;
         }
 
         .field-value {
             color: #18314d;
-            font-size: 8.4pt;
+            font-size: 9.5pt;
             font-weight: bold;
         }
 
         .wrap-value {
-            font-size: 7.2pt;
-            line-height: 1.1;
+            font-size: 7.8pt;
+            line-height: 1.02;
             word-break: break-all;
         }
 
         .meta-list td {
-            padding: 3pt 5pt;
+            padding: 2.6pt 4.6pt;
             vertical-align: top;
         }
 
@@ -147,18 +147,18 @@
             background: #ecf2f7;
             color: #29445e;
             text-align: left;
-            font-size: 9.2pt;
+            font-size: 10.2pt;
             text-transform: uppercase;
-            letter-spacing: 0.8pt;
-            padding: 4pt 7pt;
+            letter-spacing: 0.5pt;
+            padding: 3.2pt 5.6pt;
             border-bottom: 1px solid #d2dbe3;
         }
 
         .line-items td {
-            padding: 3pt 5pt;
+            padding: 2.6pt 3.8pt;
             border-bottom: 1px solid #e5ebf0;
             vertical-align: top;
-            height: 34pt;
+            height: 27pt;
             word-wrap: break-word;
         }
 
@@ -169,45 +169,45 @@
 
         .line-main {
             font-weight: bold;
-            margin-bottom: 1pt;
+            font-size: 9.3pt;
+            margin-bottom: 0.5pt;
         }
 
         .line-sub {
             color: #67788a;
-            font-size: 7.6pt;
-            line-height: 1.12;
+            font-size: 8.4pt;
+            line-height: 1.05;
         }
 
         .totals-table td {
-            padding: 3pt 5pt;
+            padding: 2.5pt 4pt;
+            font-size: 9.2pt;
         }
 
         .totals-table .grand td {
             border-top: 1px solid #d2dbe3;
-            padding-top: 4pt;
-            font-size: 9.6pt;
+            padding-top: 3.2pt;
+            font-size: 10.9pt;
             font-weight: bold;
             color: #17324e;
         }
 
         .summary-value {
-            font-size: 10.5pt;
+            font-size: 12pt;
             font-weight: bold;
             color: #17324e;
         }
 
         .strong-block {
-            font-size: 8pt;
+            font-size: 9.3pt;
             font-weight: bold;
             color: #0f172a;
-            margin-bottom: 1pt;
+            margin-bottom: 0.5pt;
         }
 
         .billto-block {
-            margin-top: 8pt;
-            border: 1px solid #d2dbe3;
-            background: #ffffff;
-            padding: 8pt 9pt 2pt 9pt;
+            margin-top: 9pt;
+            padding: 9pt 9pt 3pt 9pt;
         }
 
         .billto-title {
@@ -221,27 +221,29 @@
         }
 
         .billto-name {
-            font-size: 10.5pt;
+            font-size: 11.8pt;
             font-weight: bold;
             color: #0f172a;
-            margin: 0 0 2pt 0;
+            margin: 0 0 1pt 0;
             line-height: 1.0;
-            height: 15pt;
+            height: 14pt;
             vertical-align: bottom;
+            padding-left: 52pt;
         }
 
         .billto-account {
             color: #56697c;
-            font-size: 7.7pt;
+            font-size: 8.4pt;
             font-weight: normal;
             line-height: 1.0;
         }
 
         .billto-address {
             color: #56697c;
-            font-size: 8pt;
-            line-height: 1.08;
+            font-size: 8.7pt;
+            line-height: 1.04;
             margin: 0;
+            padding-left: 28pt;
         }
     </style>
 </head>
@@ -261,17 +263,19 @@
                 </table>
             </td>
             <td width="58%" style="vertical-align: top;">
-                <div class="remit-panel" style="padding-top: 6pt; padding-bottom: 6pt; min-height: 62pt;">
+                <div class="remit-panel" style="padding-top: 8pt; padding-bottom: 8pt; min-height: 102pt;">
                     <div class="remit-title">Return This Slip With Payment</div>
                     <table>
                         <tr>
-                            <td width="21%" style="padding-right: 6pt;"><div class="field-label">Account #</div><div class="field-value">{{ invoice.customer.account_number }}</div></td>
-                            <td width="35%" style="padding-right: 6pt;"><div class="field-label">Invoice #</div><div class="field-value wrap-value">{{ invoice.invoice_number }}</div></td>
-                            <td width="20%" style="padding-right: 6pt;"><div class="field-label">Due Date</div><div class="field-value">{{ invoice.due_date|date:"m/d/Y" }}</div></td>
+                            <td width="21%" style="padding-right: 4pt;"><div class="field-label">Account #</div><div class="field-value">{{ invoice.customer.account_number }}</div></td>
+                            <td width="35%" style="padding-right: 4pt;"><div class="field-label">Invoice #</div><div class="field-value wrap-value">{{ invoice.invoice_number }}</div></td>
+                            <td width="20%" style="padding-right: 4pt;"><div class="field-label">Due Date</div><div class="field-value">{{ invoice.due_date|date:"m/d/Y" }}</div></td>
                             <td width="24%"><div class="field-label">Amount Due</div><div class="field-value">${{ current_balance_due|floatformat:2 }}</div></td>
                         </tr>
                     </table>
-                    <div class="muted" style="margin-top: 3pt;">Customer: {{ invoice.customer.name }}</div>
+                    <div class="muted" style="margin-top: 3pt; font-size: 9.2pt;"><strong>Customer: {{ invoice.customer.name }}</strong></div>
+                    <div class="muted" style="margin-top: 2pt; font-size: 7.6pt;"><strong>Billing To:</strong> {{ billing_to_display }}</div>
+                    <div class="muted" style="margin-top: 1pt; font-size: 7.6pt;"><strong>Service At:</strong> {{ service_at_display }}</div>
                 </div>
             </td>
         </tr>
@@ -294,12 +298,14 @@
                 </table>
                 <div class="billto-block">
                     <div class="billto-title">&nbsp;</div>
-                    <table style="width:100%; border-collapse:collapse;"><tr><td class="billto-name" style="padding:0; vertical-align:bottom;">{{ invoice.customer.name }} <span class="billto-account">({{ invoice.customer.account_number }})</span></td></tr></table>
+                    <table style="width:100%; border-collapse:collapse;"><tr><td class="billto-name" style="padding:0; vertical-align:bottom;">&nbsp;</td></tr></table>
+                    <div style="height:0; line-height:0; font-size:0; margin:0; padding:0;">&nbsp;</div>
+                    <table style="width:100%; border-collapse:collapse;"><tr><td class="billto-name" style="padding:0 0 0 12pt; vertical-align:bottom;">{{ invoice.customer.name }} <span class="billto-account">({{ invoice.customer.account_number }})</span></td></tr></table>
                     <div class="billto-address">{{ invoice.customer.billing_address1 }}<br>{% if invoice.customer.billing_address2 %}{{ invoice.customer.billing_address2 }}<br>{% endif %}{% if invoice.customer.email_address %}{{ invoice.customer.email_address }}{% endif %}</div>
                 </div>
             </td>
             <td width="58%" style="vertical-align: top;">
-                <div class="meta-panel" style="padding-top: 4pt; padding-bottom: 3pt;">
+                <div class="meta-panel" style="padding-top: 3.2pt; padding-bottom: 2.4pt;">
                     <div class="meta-title">Invoice Details</div>
                     <table class="meta-list">
                         <tr>
@@ -316,7 +322,7 @@
                         </tr>
                     </table>
                 </div>
-                <div class="panel" style="background:#f5f8fb; margin-top: 4pt; padding-top: 4pt; padding-bottom: 3pt;">
+                <div class="panel" style="background:#f5f8fb; margin-top: 3pt; padding-top: 3.2pt; padding-bottom: 2.4pt;">
                     <div class="section-label">Billing Overview</div>
                     <div class="strong-block">{{ invoice.period_start|date:"m/d/Y" }} - {{ invoice.period_end|date:"m/d/Y" }}</div>
                     <div class="muted">Billing Term: {{ invoice.customer.get_billing_term_display }}<br>Tax Rate: {{ invoice.tax_rate }}%<br>Current Billing Amount: ${{ invoice.current_period_amount|floatformat:2 }}</div>
@@ -325,7 +331,7 @@
         </tr>
     </table>
 
-    <table style="margin-top: 3pt; margin-bottom: 3pt;">
+    <table style="margin-top: 2.4pt; margin-bottom: 2.4pt;">
         <tr>
             <td width="28%" style="padding-right: 4pt; vertical-align: top;"><div class="summary-panel"><div class="section-label">Subtotal</div><div class="summary-value">${{ invoice.subtotal|floatformat:2 }}</div></div></td>
             <td width="28%" style="padding: 0 2pt; vertical-align: top;"><div class="summary-panel"><div class="section-label">Tax Amount</div><div class="summary-value">${{ invoice.tax_amount|floatformat:2 }}</div></div></td>
@@ -344,15 +350,15 @@
         <tbody>
             {% for item in padded_items %}
             <tr>
-                <td>{% if item.description %}<div class="line-main">{{ item.description }}</div><div class="line-sub">{% if item.line_type == 'carryover' %}Past due balance carried into this invoice.{% else %}Current billing period charge.{% endif %}</div>{% else %}<div class="line-main">&nbsp;</div><div class="line-sub">&nbsp;</div>{% endif %}</td>
-                <td>{% if item.period_start %}{{ item.period_start|date:"m/d/Y" }} - {{ item.period_end|date:"m/d/Y" }}{% else %}<span style="display:block; height: 6pt;">&nbsp;</span>{% endif %}</td>
-                <td class="num">{% if item.amount is not None %}${{ item.amount|floatformat:2 }}{% else %}<span style="display:block; height: 6pt;">&nbsp;</span>{% endif %}</td>
+                <td>{% if item.description %}<div class="line-main">{{ item.description }}</div><div class="line-sub">{% if item.line_type == 'carryover' %}Past due balance carried into this invoice.{% elif item.line_type == 'rollup' %}Includes additional unpaid billing periods not shown above.{% else %}Current billing period charge.{% endif %}</div>{% else %}<div class="line-main">&nbsp;</div><div class="line-sub">&nbsp;</div>{% endif %}</td>
+                <td>{% if item.period_start %}{{ item.period_start|date:"m/d/Y" }} - {{ item.period_end|date:"m/d/Y" }}{% else %}<span style="display:block; height: 8pt;">&nbsp;</span>{% endif %}</td>
+                <td class="num">{% if item.amount is not None %}${{ item.amount|floatformat:2 }}{% else %}<span style="display:block; height: 8pt;">&nbsp;</span>{% endif %}</td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
 
-    <table style="margin-top: 3pt;">
+    <table style="margin-top: 2.4pt;">
         <tr>
             <td width="42%" style="vertical-align: top; padding-right: 7pt;">
                 {% if invoice.partial_payment > 0 %}<div class="note-panel" style="margin-bottom: 3pt; background:#fef2f2; border-color:#fecaca;"><strong>Partial payment applied before this invoice:</strong> ${{ invoice.partial_payment|floatformat:2 }}</div>{% endif %}

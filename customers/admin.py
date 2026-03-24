@@ -1,4 +1,6 @@
 from datetime import datetime, timedelta
+from django import forms
+from django.forms.models import BaseInlineFormSet
 import csv
 from decimal import Decimal, InvalidOperation
 
@@ -43,8 +45,40 @@ class CustomerChangeList(ChangeList):
         return f"?{current_params.urlencode()}" if current_params else "?"
 
 
+
+class ServiceForm(forms.ModelForm):
+    class Meta:
+        model = Service
+        fields = "__all__"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        customer = None
+        if self.instance and getattr(self.instance, "customer_id", None):
+            customer = self.instance.customer
+        elif self.initial.get("customer"):
+            customer = self.initial.get("customer")
+        if not self.instance.pk:
+            self.fields["service_name"].initial = self.initial.get("service_name") or "Alarm Monitoring Service"
+            if customer:
+                self.fields["service_address1"].initial = self.initial.get("service_address1") or customer.billing_address1
+                self.fields["service_address2"].initial = self.initial.get("service_address2") or customer.billing_address2
+
+
+class ServiceInlineFormSet(BaseInlineFormSet):
+    def _construct_form(self, i, **kwargs):
+        form = super()._construct_form(i, **kwargs)
+        if not form.instance.pk:
+            form.fields["service_name"].initial = form.fields["service_name"].initial or "Alarm Monitoring Service"
+            if self.instance and getattr(self.instance, "pk", None):
+                form.fields["service_address1"].initial = form.fields["service_address1"].initial or self.instance.billing_address1
+                form.fields["service_address2"].initial = form.fields["service_address2"].initial or self.instance.billing_address2
+        return form
+
 class ServiceInline(admin.TabularInline):
     model = Service
+    form = ServiceForm
+    formset = ServiceInlineFormSet
     extra = 0
 
 
@@ -792,5 +826,6 @@ class CustomerAdmin(admin.ModelAdmin):
 
 @admin.register(Service)
 class ServiceAdmin(admin.ModelAdmin):
+    form = ServiceForm
     list_display = ("service_name", "customer", "billing_amount", "activation_date", "is_active")
     search_fields = ("service_name", "customer__account_number", "customer__name")

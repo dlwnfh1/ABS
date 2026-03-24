@@ -137,6 +137,81 @@
                 }, 3800 + (index * 120));
             });
         }
+
+        var billing1 = document.getElementById("id_billing_address1");
+        var billing2 = document.getElementById("id_billing_address2");
+
+        function bindServiceInputTracking() {
+            var serviceAddress1Inputs = document.querySelectorAll('input[id$="-service_address1"]');
+            var serviceAddress2Inputs = document.querySelectorAll('input[id$="-service_address2"]');
+
+            serviceAddress1Inputs.forEach(function (input) {
+                if (input.dataset.codexBound === "1") {
+                    return;
+                }
+                input.dataset.codexBound = "1";
+                input.addEventListener("input", function () {
+                    var billingValue = billing1 ? billing1.value : "";
+                    input.dataset.syncedFromBilling = input.value === billingValue ? "1" : "0";
+                });
+            });
+
+            serviceAddress2Inputs.forEach(function (input) {
+                if (input.dataset.codexBound === "1") {
+                    return;
+                }
+                input.dataset.codexBound = "1";
+                input.addEventListener("input", function () {
+                    var billingValue = billing2 ? billing2.value : "";
+                    input.dataset.syncedFromBilling = input.value === billingValue ? "1" : "0";
+                });
+            });
+        }
+
+        function syncServiceDefaults() {
+            var serviceNameInputs = document.querySelectorAll('input[id$="-service_name"]');
+            var serviceAddress1Inputs = document.querySelectorAll('input[id$="-service_address1"]');
+            var serviceAddress2Inputs = document.querySelectorAll('input[id$="-service_address2"]');
+
+            serviceNameInputs.forEach(function (input) {
+                if (!input.value.trim()) {
+                    input.value = "Alarm Monitoring Service";
+                }
+            });
+
+            serviceAddress1Inputs.forEach(function (input) {
+                if (billing1 && billing1.value.trim() && (!input.value.trim() || input.dataset.syncedFromBilling === "1")) {
+                    input.value = billing1.value;
+                    input.dataset.syncedFromBilling = "1";
+                }
+            });
+
+            serviceAddress2Inputs.forEach(function (input) {
+                if (billing2 && billing2.value.trim() && (!input.value.trim() || input.dataset.syncedFromBilling === "1")) {
+                    input.value = billing2.value;
+                    input.dataset.syncedFromBilling = "1";
+                }
+            });
+
+            bindServiceInputTracking();
+        }
+
+        if (billing1) {
+            billing1.addEventListener("input", syncServiceDefaults);
+        }
+        if (billing2) {
+            billing2.addEventListener("input", syncServiceDefaults);
+        }
+
+        syncServiceDefaults();
+
+        var inlineGroup = document.getElementById("services-group");
+        if (inlineGroup && window.MutationObserver) {
+            var observer = new MutationObserver(function () {
+                syncServiceDefaults();
+            });
+            observer.observe(inlineGroup, { childList: true, subtree: true });
+        }
     });
 </script>
 {% endblock %}
