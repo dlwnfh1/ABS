@@ -12,6 +12,13 @@
         margin-bottom: 16px;
     }
 
+    .report-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: center;
+    }
+
     .report-header a {
         display: inline-flex;
         align-items: center;
@@ -23,6 +30,10 @@
         color: #fff;
         font-weight: 700;
         text-decoration: none;
+    }
+
+    .report-header a.secondary {
+        background: #1f4b7a;
     }
 
     .payments-filter {
@@ -105,8 +116,12 @@
 {% block content %}
 <div id="content-main">
     <div class="report-header">
-        <h1>Payments Report</h1>
-        <a href="{{ reports_home_url }}">Back to Reports</a>
+        <h1>Payment Activity Report</h1>
+        <div class="report-actions">
+            <a class="secondary" href="{{ payments_pdf_url }}">Download PDF</a>
+            <a class="secondary" href="{{ payments_csv_url }}">Export CSV</a>
+            <a href="{{ reports_home_url }}">Back to Reports</a>
+        </div>
     </div>
 
     <form method="get" class="payments-filter">
@@ -119,13 +134,13 @@
             <input type="date" id="id_date_to" name="date_to" value="{{ date_to }}">
         </div>
         <div>
-            <button type="submit">Run report</button>
+            <button type="submit">Refresh Report</button>
         </div>
     </form>
 
     <div class="payments-totals">
         <div class="payments-total-card">
-            Total Payments
+            Total Collected
             <strong>${{ total_amount|floatformat:2 }}</strong>
         </div>
         {% for method, amount in method_totals.items %}

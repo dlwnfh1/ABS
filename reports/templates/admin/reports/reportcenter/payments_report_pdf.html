@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Payment Activity Report</title>
+    <style>
+        @page { size: letter; margin: 22pt 22pt 22pt 22pt; }
+        body {
+            font-family: Helvetica, Arial, sans-serif;
+            color: #15304f;
+            font-size: 9pt;
+            line-height: 1.35;
+        }
+        .header-table, .summary-table, .report-table { width: 100%; border-collapse: collapse; }
+        .header-table td { vertical-align: top; }
+        .brand { font-size: 19pt; font-weight: bold; color: #a95b43; margin-bottom: 2pt; }
+        .company-name { font-size: 12pt; font-weight: bold; color: #132c48; margin-bottom: 4pt; }
+        .muted { color: #4d6888; }
+        .title { font-size: 20pt; font-weight: bold; color: #132c48; text-align: right; margin-bottom: 4pt; }
+        .subtitle { font-size: 9pt; color: #5b7391; text-align: right; }
+        .spacer { height: 12pt; }
+        .summary-table td { padding-right: 7pt; vertical-align: top; }
+        .summary-table td.last { padding-right: 0; }
+        .summary-card {
+            border: 1px solid #cfd8e4;
+            background: #ffffff;
+            padding: 8pt 9pt;
+            min-height: 44pt;
+        }
+        .summary-card.primary {
+            border-color: #e2c7a2;
+            background: #fff9f1;
+        }
+        .summary-label {
+            font-size: 7pt;
+            text-transform: uppercase;
+            color: #5a7390;
+            letter-spacing: 0.8pt;
+            margin-bottom: 4pt;
+        }
+        .summary-value {
+            font-size: 11pt;
+            font-weight: bold;
+            color: #132c48;
+        }
+        .section-title {
+            font-size: 10pt;
+            font-weight: bold;
+            color: #132c48;
+            margin-bottom: 6pt;
+            text-transform: uppercase;
+            letter-spacing: 1pt;
+        }
+        .report-table { border: 1px solid #d4dde8; }
+        .report-table th {
+            background: #eef3f8;
+            color: #183452;
+            font-size: 7.8pt;
+            text-transform: uppercase;
+            padding: 6pt 7pt;
+            border-bottom: 1px solid #d4dde8;
+            text-align: left;
+            letter-spacing: 0.6pt;
+        }
+        .report-table td {
+            padding: 6pt 7pt;
+            border-bottom: 1px solid #e3e9f0;
+            vertical-align: top;
+            word-break: break-word;
+        }
+        .report-table tr:last-child td { border-bottom: 0; }
+        .num { text-align: right; white-space: nowrap; }
+        .footer-note { margin-top: 10pt; font-size: 8pt; color: #607790; }
+    </style>
+</head>
+<body>
+    <table class="header-table">
+        <tr>
+            <td style="width:56%;">
+                <div class="brand">Neo</div>
+                <div class="company-name">Neo Security Alarm Inc.</div>
+                <div class="muted">207-20 Northern Blvd, 2FL, #2, Bayside, NY 11361</div>
+                <div class="muted">Tel: (718) 460-4022, (718) 279-2790</div>
+            </td>
+            <td style="width:44%;">
+                <div class="title">Payment Activity Report</div>
+                <div class="subtitle">{{ date_from }} to {{ date_to }}</div>
+            </td>
+        </tr>
+    </table>
+
+    <div class="spacer"></div>
+
+    <table class="summary-table">
+        <tr>
+            <td style="width:30%;">
+                <div class="summary-card primary">
+                    <div class="summary-label">Total Collected</div>
+                    <div class="summary-value">${{ total_amount|floatformat:2 }}</div>
+                </div>
+            </td>
+            {% for method, amount in method_totals.items %}
+            <td {% if forloop.last %}class="last"{% endif %}>
+                <div class="summary-card">
+                    <div class="summary-label">{{ method }}</div>
+                    <div class="summary-value">${{ amount|floatformat:2 }}</div>
+                </div>
+            </td>
+            {% endfor %}
+        </tr>
+    </table>
+
+    <div class="spacer"></div>
+
+    <div class="section-title">Payment Detail Listing</div>
+    <table class="report-table">
+        <thead>
+            <tr>
+                <th style="width:12%;">Date</th>
+                <th style="width:24%;">Customer</th>
+                <th style="width:12%;">Account #</th>
+                <th style="width:12%; text-align:right;">Amount</th>
+                <th style="width:14%;">Method</th>
+                <th style="width:13%;">Reference</th>
+                <th style="width:13%;">Note</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for payment in payments %}
+            <tr>
+                <td>{{ payment.payment_date|date:"m/d/Y" }}</td>
+                <td>{{ payment.customer.name }}</td>
+                <td>{{ payment.customer.account_number }}</td>
+                <td class="num">${{ payment.amount|floatformat:2 }}</td>
+                <td>{{ payment.get_method_display }}</td>
+                <td>{% if payment.reference_number %}{{ payment.reference_number }}{% else %}&nbsp;{% endif %}</td>
+                <td>{% if payment.note %}{{ payment.note }}{% else %}&nbsp;{% endif %}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="7">No payments found for this date range.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <div class="footer-note">Generated on {{ now|date:"m/d/Y" }} for the selected payment date range.</div>
+</body>
+</html>

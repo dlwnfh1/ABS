@@ -2,6 +2,9 @@ import base64
 import hashlib
 from pathlib import Path
 from io import BytesIO
+from zipfile import ZipFile, ZIP_DEFLATED
+
+from pypdf import PdfReader, PdfWriter
 
 from django.contrib import admin, messages
 from django.contrib.admin.views.main import ChangeList
@@ -15,6 +18,7 @@ from django.utils import timezone
 from xhtml2pdf import pisa
 
 from .models import Invoice, InvoiceItem
+from .pdf_utils import ensure_md5_compat, build_invoice_pdf_context, render_invoice_pdf_bytes, save_invoices_to_configured_folder, logo_symbol_data_uri
 
 
 class InvoiceChangeList(ChangeList):
@@ -52,7 +56,7 @@ class InvoiceItemInline(admin.TabularInline):
 
 @admin.register(Invoice)
 class InvoiceAdmin(admin.ModelAdmin):
-    custom_filter_params = {"quick"}
+    custom_filter_params = {"quick", "generated_ids"}
     change_list_template = "admin/billing/invoice/change_list.html"
     change_form_template = "admin/billing/invoice/change_form.html"
     list_per_page = 50
@@ -76,6 +80,10 @@ class InvoiceAdmin(admin.ModelAdmin):
     inlines = [InvoiceItemInline]
     readonly_fields = ("last_payment_summary", "preview_link")
     list_select_related = ("customer",)
+    actions = ["download_selected_pdfs_zip", "download_selected_pdfs_merged"]
+
+    def get_model_perms(self, request):
+        return {}
 
     def get_changelist(self, request, **kwargs):
         return InvoiceChangeList
@@ -104,6 +112,10 @@ class InvoiceAdmin(admin.ModelAdmin):
             queryset = queryset.filter(auto_generated=False)
         elif quick_filter == "open":
             queryset = queryset.exclude(status__in=[Invoice.STATUS_PAID, Invoice.STATUS_VOID])
+        generated_ids = filter_params.get("generated_ids", "")
+        if generated_ids:
+            ids = [int(pk) for pk in generated_ids.split(",") if pk.isdigit()]
+            queryset = queryset.filter(pk__in=ids)
         return queryset
 
     @admin.display(ordering="customer__name", description="Customer")
@@ -145,6 +157,16 @@ class InvoiceAdmin(admin.ModelAdmin):
                 self.admin_site.admin_view(self.print_pdf_view),
                 name="billing_invoice_print",
             ),
+            path(
+                "batch-download-zip/",
+                self.admin_site.admin_view(self.batch_download_zip_view),
+                name="billing_invoice_batch_zip",
+            ),
+            path(
+                "batch-download-pdf/",
+                self.admin_site.admin_view(self.batch_download_pdf_view),
+                name="billing_invoice_batch_pdf",
+            ),
         ]
         return custom_urls + urls
 
@@ -172,6 +194,12 @@ class InvoiceAdmin(admin.ModelAdmin):
         extra_context["show_all_filtered_url"] = f"?{show_all_params.urlencode()}" if show_all_params else "?"
         extra_context["show_paginated_url"] = f"?{paged_params.urlencode()}" if paged_params else "?"
         extra_context["showing_all_filtered"] = original_get.get("all") == "1"
+        generated_ids = [pk for pk in original_get.get("generated_ids", "").split(",") if pk.isdigit()]
+        extra_context["generated_invoice_count"] = len(generated_ids)
+        if generated_ids:
+            generated_query = f'generated_ids={",".join(generated_ids)}'
+            extra_context["generated_zip_url"] = reverse("admin:billing_invoice_batch_zip") + f"?{generated_query}"
+            extra_context["generated_pdf_url"] = reverse("admin:billing_invoice_batch_pdf") + f"?{generated_query}"
         return super().changelist_view(request, extra_context=extra_context)
 
     def change_view(self, request, object_id, form_url="", extra_context=None):
@@ -315,18 +343,101 @@ class InvoiceAdmin(admin.ModelAdmin):
     def print_pdf_view(self, request, object_id):
         return self._render_pdf_response(request, object_id, as_attachment=False)
 
+    def _get_batch_invoices_from_request(self, request):
+        raw_ids = request.GET.get("generated_ids", "")
+        ids = [int(pk) for pk in raw_ids.split(",") if pk.isdigit()]
+        if not ids:
+            return []
+        return list(self.get_queryset(request).filter(pk__in=ids).select_related("customer").order_by("customer__name", "period_start", "id"))
+
+    def batch_download_zip_view(self, request):
+        invoices = self._get_batch_invoices_from_request(request)
+        if not invoices:
+            self.message_user(request, "No generated invoices were found for download.", level=messages.WARNING)
+            return redirect("admin:billing_invoice_changelist")
+        return self._build_zip_response(invoices, request)
+
+    def batch_download_pdf_view(self, request):
+        invoices = self._get_batch_invoices_from_request(request)
+        if not invoices:
+            self.message_user(request, "No generated invoices were found for download.", level=messages.WARNING)
+            return redirect("admin:billing_invoice_changelist")
+        return self._build_merged_pdf_response(invoices, request)
+
+    def _build_zip_response(self, invoices, request=None):
+        output = BytesIO()
+        with ZipFile(output, "w", compression=ZIP_DEFLATED) as zf:
+            for invoice in invoices:
+                pdf_bytes = render_invoice_pdf_bytes(invoice)
+                if not pdf_bytes:
+                    continue
+                zf.writestr(f"{invoice.invoice_number}.pdf", pdf_bytes)
+        response = HttpResponse(output.getvalue(), content_type="application/zip")
+        response["Content-Disposition"] = 'attachment; filename="selected-invoices.zip"'
+        self._set_download_status_cookie(response, request)
+        return response
+
+    def _build_merged_pdf_response(self, invoices, request=None):
+        writer = PdfWriter()
+        merged_count = 0
+        for invoice in invoices:
+            pdf_bytes = render_invoice_pdf_bytes(invoice)
+            if not pdf_bytes:
+                continue
+            reader = PdfReader(BytesIO(pdf_bytes))
+            for page in reader.pages:
+                writer.add_page(page)
+            merged_count += 1
+        if not merged_count:
+            return None
+        output = BytesIO()
+        writer.write(output)
+        response = HttpResponse(output.getvalue(), content_type="application/pdf")
+        response["Content-Disposition"] = 'attachment; filename="selected-invoices.pdf"'
+        self._set_download_status_cookie(response, request)
+        return response
+
+    def _set_download_status_cookie(self, response, request):
+        if not request:
+            return
+        token = request.GET.get("download_token") or request.POST.get("download_token")
+        if token:
+            response.set_cookie(
+                "codex_download_token",
+                token,
+                max_age=300,
+                path="/",
+                samesite="Lax",
+            )
+
+    @admin.action(description="Download selected invoices as ZIP")
+    def download_selected_pdfs_zip(self, request, queryset):
+        invoices = list(queryset.select_related("customer").order_by("customer__name", "period_start", "id"))
+        if not invoices:
+            self.message_user(request, "No invoices were selected.", level=messages.WARNING)
+            return None
+        return self._build_zip_response(invoices, request)
+
+    @admin.action(description="Download selected invoices as one PDF")
+    def download_selected_pdfs_merged(self, request, queryset):
+        invoices = list(queryset.select_related("customer").order_by("customer__name", "period_start", "id"))
+        if not invoices:
+            self.message_user(request, "No invoices were selected.", level=messages.WARNING)
+            return None
+        response = self._build_merged_pdf_response(invoices, request)
+        if response is None:
+            self.message_user(request, "No invoice PDFs could be generated.", level=messages.ERROR)
+            return None
+        return response
+
     def _render_pdf_response(self, request, object_id, as_attachment):
         invoice = self.get_object(request, object_id)
-        context = self._invoice_document_context(request, invoice)
-        html = render_to_string("admin/billing/invoice/pdf.html", context, request=request)
-        pdf_buffer = BytesIO()
-        self._ensure_md5_compat()
-        pdf = pisa.CreatePDF(html, dest=pdf_buffer)
-        if pdf.err:
+        pdf_bytes = render_invoice_pdf_bytes(invoice)
+        if not pdf_bytes:
             self.message_user(request, "PDF generation failed.", level=messages.ERROR)
             return redirect("admin:billing_invoice_preview", object_id=object_id)
 
-        response = HttpResponse(pdf_buffer.getvalue(), content_type="application/pdf")
+        response = HttpResponse(pdf_bytes, content_type="application/pdf")
         disposition = "attachment" if as_attachment else "inline"
         response["Content-Disposition"] = f'{disposition}; filename="{invoice.invoice_number}.pdf"'
         response["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
@@ -334,39 +445,6 @@ class InvoiceAdmin(admin.ModelAdmin):
         response["Expires"] = "0"
         return response
 
-    @staticmethod
-    def _ensure_md5_compat():
-        original_md5 = hashlib.md5
-
-        def md5_compat(*args, **kwargs):
-            kwargs.pop("usedforsecurity", None)
-            if len(args) > 1:
-                args = args[:1]
-            return original_md5(*args, **kwargs)
-
-        hashlib.md5 = md5_compat
-
-        module_patches = [
-            ("reportlab.pdfbase.pdfdoc", "md5"),
-            ("reportlab.pdfbase.cidfonts", "md5"),
-            ("reportlab.lib.utils", "md5"),
-            ("reportlab.lib.fontfinder", "md5"),
-        ]
-        for module_name, attr_name in module_patches:
-            try:
-                module = __import__(module_name, fromlist=[attr_name])
-                setattr(module, attr_name, md5_compat)
-            except Exception:
-                pass
-
-
-    @staticmethod
-    def _logo_symbol_data_uri():
-        logo_path = Path(__file__).resolve().parent.parent / "logo_candidate.png"
-        if not logo_path.exists():
-            return ""
-        encoded = base64.b64encode(logo_path.read_bytes()).decode("ascii")
-        return f"data:image/png;base64,{encoded}"
 
     def _invoice_document_context(self, request, invoice):
         today = timezone.localdate()
@@ -436,7 +514,7 @@ class InvoiceAdmin(admin.ModelAdmin):
             "invoice_pdf_url": reverse("admin:billing_invoice_pdf", args=[invoice.pk]),
             "invoice_print_url": reverse("admin:billing_invoice_print", args=[invoice.pk]),
             "pdf_cache_buster": timezone.now().strftime("%Y%m%d%H%M%S%f"),
-            "logo_symbol_data_uri": self._logo_symbol_data_uri(),
+            "logo_symbol_data_uri": logo_symbol_data_uri(),
             "billing_to_display": billing_to,
             "service_at_display": service_at,
         }
@@ -462,6 +540,7 @@ class InvoiceAdmin(admin.ModelAdmin):
             selected_ids = request.POST.getlist("customer_ids")
             action = request.POST.get("action", "generate_selected")
             created = 0
+            created_invoice_ids = []
             skipped_messages = []
             for candidate in candidates:
                 customer = candidate["customer"]
@@ -471,31 +550,44 @@ class InvoiceAdmin(admin.ModelAdmin):
                     invoices, status, message = Invoice.generate_all_due_for_customer(customer, force=False)
                     if status == "created":
                         created += len(invoices)
+                        created_invoice_ids.extend(str(inv.pk) for inv in invoices)
                     else:
                         skipped_messages.append(f"{customer.account_number}: {message}")
                 elif action == "force_generate_all_due":
                     invoices, status, message = Invoice.generate_all_due_for_customer(customer, force=True)
                     if status == "created":
                         created += len(invoices)
+                        created_invoice_ids.extend(str(inv.pk) for inv in invoices)
                     else:
                         skipped_messages.append(f"{customer.account_number}: {message}")
                 elif action == "force_generate_selected":
                     invoice, status, message = Invoice.generate_for_customer(customer, force=True)
                     if status == "created":
                         created += 1
+                        created_invoice_ids.append(str(invoice.pk))
                     else:
                         skipped_messages.append(f"{customer.account_number}: {message}")
                 else:
                     invoice, status, message = Invoice.generate_for_customer(customer, force=False)
                     if status == "created":
                         created += 1
+                        created_invoice_ids.append(str(invoice.pk))
                     else:
                         skipped_messages.append(f"{customer.account_number}: {message}")
 
+            save_result = None
+            if created_invoice_ids:
+                created_invoices = list(Invoice.objects.filter(pk__in=created_invoice_ids).select_related("customer"))
+                save_result = save_invoices_to_configured_folder(created_invoices)
             if created:
                 self.message_user(request, f"Generated {created} invoice(s).", level=messages.SUCCESS)
+            if save_result and save_result.get("saved_count"):
+                self.message_user(request, f'Saved {save_result["saved_count"]} invoice PDF(s) to {save_result["date_folder"]}.', level=messages.SUCCESS)
             for message in skipped_messages:
                 self.message_user(request, message, level=messages.WARNING)
+            if created_invoice_ids:
+                invoice_list_url = reverse("admin:billing_invoice_changelist")
+                return redirect(f'{invoice_list_url}?generated_ids={",".join(created_invoice_ids)}')
             if not created and not skipped_messages:
                 self.message_user(request, "No customers were selected.", level=messages.WARNING)
             return redirect("admin:billing_invoice_generator")
@@ -516,3 +608,6 @@ class InvoiceAdmin(admin.ModelAdmin):
 class InvoiceItemAdmin(admin.ModelAdmin):
     list_display = ("invoice", "line_type", "period_start", "period_end", "amount")
     search_fields = ("invoice__invoice_number", "invoice__customer__account_number", "description")
+
+    def get_model_perms(self, request):
+        return {}

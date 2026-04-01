@@ -48,11 +48,71 @@
     .top-scrollbar-inner {
         height: 10px;
     }
+
+    .codex-processing-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(17, 24, 39, 0.42);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+        padding: 24px;
+    }
+
+    .codex-processing-overlay.show {
+        display: flex;
+    }
+
+    .codex-processing-card {
+        background: #fff;
+        border-radius: 14px;
+        padding: 18px 20px;
+        min-width: 280px;
+        max-width: 420px;
+        box-shadow: 0 18px 40px rgba(0, 0, 0, 0.18);
+        display: flex;
+        align-items: center;
+        gap: 14px;
+    }
+
+    .codex-spinner {
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        border: 3px solid #dbeafe;
+        border-top-color: #2563eb;
+        animation: codex-spin 0.8s linear infinite;
+        flex: 0 0 auto;
+    }
+
+    .codex-processing-title {
+        font-weight: 700;
+        color: #111827;
+        margin-bottom: 2px;
+    }
+
+    .codex-processing-text {
+        font-size: 13px;
+        color: #4b5563;
+        line-height: 1.4;
+    }
+
+    @keyframes codex-spin {
+        to { transform: rotate(360deg); }
+    }
 </style>
 {% endblock %}
 
 {% block content_title %}
 {{ block.super }}
+{% if generated_invoice_count %}
+<div style="margin:12px 0 8px 0; padding:12px 14px; border:1px solid #bfdbfe; background:#eff6ff; border-radius:10px; display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
+    <strong style="color:#1e3a8a;">Newly generated invoices: {{ generated_invoice_count }}</strong>
+    <a href="{{ generated_zip_url }}" class="js-generated-download" data-download-kind="zip" style="padding:6px 10px; border-radius:999px; background:#1f4b7a; color:#fff; text-decoration:none;">Download ZIP</a>
+    <a href="{{ generated_pdf_url }}" class="js-generated-download" data-download-kind="pdf" style="padding:6px 10px; border-radius:999px; background:#1f4b7a; color:#fff; text-decoration:none;">Download One PDF</a>
+</div>
+{% endif %}
 <div style="margin: 12px 0 4px 0; display:flex; gap:8px; flex-wrap:wrap;">
     {% for item in quick_filters %}
     <a href="{{ item.url }}" style="padding:6px 10px; border:1px solid #d1d5db; border-radius:999px; text-decoration:none; {% if item.active %}background:#111827;color:#fff;border-color:#111827;{% else %}background:#fff;color:#111827;{% endif %}">
@@ -82,6 +142,15 @@
 {% endblock %}
 
 {% block result_list %}
+<div id="codex-processing-overlay" class="codex-processing-overlay" aria-live="polite" aria-hidden="true">
+    <div class="codex-processing-card">
+        <div class="codex-spinner"></div>
+        <div>
+            <div id="codex-processing-title" class="codex-processing-title">Working...</div>
+            <div id="codex-processing-text" class="codex-processing-text">Please wait while invoice files are prepared.</div>
+        </div>
+    </div>
+</div>
 <div id="invoice-top-scrollbar" class="top-scrollbar" style="display:none;">
     <div id="invoice-top-scrollbar-inner" class="top-scrollbar-inner"></div>
 </div>
@@ -96,30 +165,94 @@
                 {% endfor %}
             {% endif %}
         ].filter(Boolean);
+
+        function showToast(message, offset) {
+            var stack = document.querySelector(".codex-toast-stack");
+            if (!stack) {
+                stack = document.createElement("div");
+                stack.className = "codex-toast-stack";
+                document.body.appendChild(stack);
+            }
+            var toast = document.createElement("div");
+            toast.className = "codex-toast";
+            toast.textContent = message;
+            stack.appendChild(toast);
+            var delay = offset || 0;
+            window.setTimeout(function () {
+                toast.classList.add("show");
+            }, 50 + delay);
+            window.setTimeout(function () {
+                toast.classList.remove("show");
+            }, 3400 + delay);
+            window.setTimeout(function () {
+                if (toast.parentNode) {
+                    toast.parentNode.removeChild(toast);
+                }
+                if (!stack.children.length && stack.parentNode) {
+                    stack.parentNode.removeChild(stack);
+                }
+            }, 3800 + delay);
+        }
+
         if (popupMessages.length) {
-            var stack = document.createElement("div");
-            stack.className = "codex-toast-stack";
-            document.body.appendChild(stack);
             popupMessages.forEach(function (message, index) {
-                var toast = document.createElement("div");
-                toast.className = "codex-toast";
-                toast.textContent = message;
-                stack.appendChild(toast);
-                window.setTimeout(function () {
-                    toast.classList.add("show");
-                }, 50 + (index * 80));
-                window.setTimeout(function () {
-                    toast.classList.remove("show");
-                }, 3400 + (index * 120));
-                window.setTimeout(function () {
-                    if (toast.parentNode) {
-                        toast.parentNode.removeChild(toast);
-                    }
-                    if (!stack.children.length && stack.parentNode) {
-                        stack.parentNode.removeChild(stack);
-                    }
-                }, 3800 + (index * 120));
+                showToast(message, index * 120);
             });
+        }
+
+        var overlay = document.getElementById("codex-processing-overlay");
+        var overlayTitle = document.getElementById("codex-processing-title");
+        var overlayText = document.getElementById("codex-processing-text");
+
+        function showProcessing(title, text) {
+            if (!overlay) {
+                return;
+            }
+            overlayTitle.textContent = title || "Working...";
+            overlayText.textContent = text || "Please wait.";
+            overlay.classList.add("show");
+            overlay.setAttribute("aria-hidden", "false");
+        }
+
+        function hideProcessing() {
+            if (!overlay) {
+                return;
+            }
+            overlay.classList.remove("show");
+            overlay.setAttribute("aria-hidden", "true");
+        }
+
+        function readCookie(name) {
+            var prefix = name + "=";
+            var cookies = document.cookie ? document.cookie.split("; ") : [];
+            for (var i = 0; i < cookies.length; i += 1) {
+                if (cookies[i].indexOf(prefix) === 0) {
+                    return cookies[i].substring(prefix.length);
+                }
+            }
+            return "";
+        }
+
+        function clearCookie(name) {
+            document.cookie = name + "=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/";
+        }
+
+        function startDownloadMonitor(token, doneMessage) {
+            var attempts = 0;
+            var timer = window.setInterval(function () {
+                attempts += 1;
+                if (readCookie("codex_download_token") === token) {
+                    window.clearInterval(timer);
+                    clearCookie("codex_download_token");
+                    hideProcessing();
+                    showToast(doneMessage || "Download is ready.");
+                    return;
+                }
+                if (attempts > 240) {
+                    window.clearInterval(timer);
+                    hideProcessing();
+                }
+            }, 500);
         }
 
         function applyCustomFiltersToLinks() {
@@ -218,6 +351,52 @@
             syncScrollbar();
             bindResultScroll();
         }, 250);
+
+        var changelistForm = document.getElementById("changelist-form");
+        if (changelistForm) {
+            changelistForm.addEventListener("submit", function () {
+                var actionSelect = changelistForm.querySelector('select[name="action"]');
+                var action = actionSelect ? actionSelect.value : "";
+                if (action === "download_selected_pdfs_zip" || action === "download_selected_pdfs_merged") {
+                    var token = "dl-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8);
+                    var hidden = changelistForm.querySelector('input[name="download_token"]');
+                    if (!hidden) {
+                        hidden = document.createElement("input");
+                        hidden.type = "hidden";
+                        hidden.name = "download_token";
+                        changelistForm.appendChild(hidden);
+                    }
+                    hidden.value = token;
+                    showProcessing(
+                        action === "download_selected_pdfs_zip" ? "Preparing ZIP download..." : "Preparing merged PDF...",
+                        "This can take a little time when many invoices are selected."
+                    );
+                    startDownloadMonitor(
+                        token,
+                        action === "download_selected_pdfs_zip" ? "ZIP download is ready." : "Merged PDF is ready."
+                    );
+                }
+            });
+        }
+
+        document.querySelectorAll(".js-generated-download").forEach(function (link) {
+            link.addEventListener("click", function (event) {
+                event.preventDefault();
+                var token = "dl-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8);
+                var url = new URL(link.href, window.location.origin);
+                url.searchParams.set("download_token", token);
+                showProcessing(
+                    link.dataset.downloadKind === "zip" ? "Preparing ZIP download..." : "Preparing merged PDF...",
+                    "Please wait while the newly generated invoices are bundled."
+                );
+                startDownloadMonitor(
+                    token,
+                    link.dataset.downloadKind === "zip" ? "ZIP download is ready." : "Merged PDF is ready."
+                );
+                window.location.href = url.toString();
+            });
+        });
+
         applyCustomFiltersToLinks();
         syncScrollbar();
         bindResultScroll();

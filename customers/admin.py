@@ -7,7 +7,7 @@ from decimal import Decimal, InvalidOperation
 from django.contrib import admin
 from django.contrib import messages
 from django.contrib.admin.views.main import ChangeList
-from django.db.models import Count, Max, Prefetch
+from django.db.models import Count, Max, Prefetch, Q
 from django.http import HttpResponseRedirect, HttpResponse
 from django.db import transaction
 from django.template.response import TemplateResponse
@@ -15,6 +15,7 @@ from django.urls import path, reverse
 from django.utils.html import format_html
 from django.utils import timezone
 from billing.models import Invoice
+from billing.pdf_utils import save_invoices_to_configured_folder
 
 from .models import Customer, Service
 
@@ -124,7 +125,7 @@ class CustomerAdmin(admin.ModelAdmin):
         queryset = self.model.objects.annotate(
             invoice_total=Count("invoices", distinct=True),
             payment_total=Count("payments", distinct=True),
-            last_payment_date=Max("payments__payment_date"),
+            last_payment_date=Max("payments__payment_date", filter=Q(payments__is_voided=False)),
         ).prefetch_related(
             Prefetch(
                 "invoices",
@@ -190,7 +191,7 @@ class CustomerAdmin(admin.ModelAdmin):
         queryset = queryset.annotate(
             invoice_total=Count("invoices", distinct=True),
             payment_total=Count("payments", distinct=True),
-            last_payment_date=Max("payments__payment_date"),
+            last_payment_date=Max("payments__payment_date", filter=Q(payments__is_voided=False)),
         ).prefetch_related(
             Prefetch(
                 "invoices",
@@ -260,7 +261,7 @@ class CustomerAdmin(admin.ModelAdmin):
         extra_context["force_generate_next_url"] = reverse("admin:customers_customer_force_generate_next", args=[object_id])
         extra_context["generate_all_due_url"] = reverse("admin:customers_customer_generate_all_due", args=[object_id])
         extra_context["force_generate_all_due_url"] = reverse("admin:customers_customer_force_generate_all_due", args=[object_id])
-        extra_context["add_payment_url"] = f'{reverse("admin:payments_payment_add")}?customer={object_id}'
+        extra_context["add_payment_url"] = f'{reverse("admin:payments_payment_quick_entry")}?customer={object_id}'
         extra_context["view_payments_url"] = f'{reverse("admin:payments_payment_changelist")}?customer__id__exact={object_id}'
         extra_context["summary_cards"] = self._build_summary_cards(customer)
         return super().change_view(request, object_id, form_url=form_url, extra_context=extra_context)
@@ -275,7 +276,8 @@ class CustomerAdmin(admin.ModelAdmin):
         today = timezone.localdate()
         open_balance = self._customer_open_balance(customer, as_of_date=today)
 
-        last_payment = customer.payments.order_by("-payment_date", "-id").first()
+        last_payment = customer.payments.filter(is_voided=False).order_by("-payment_date", "-id").first()
+        last_voided_payment = customer.payments.filter(is_voided=True).order_by("-voided_at", "-id").first()
         status_label = self.next_invoice_status(customer)
         if hasattr(status_label, "__html__"):
             status_label = str(status_label)
@@ -323,6 +325,22 @@ class CustomerAdmin(admin.ModelAdmin):
                 "tone": "normal",
             },
             {
+                "label": "Last Voided Payment",
+                "value": (
+                    f"${last_voided_payment.amount:.2f} on {last_voided_payment.payment_date:%m/%d/%Y}"
+                    if last_voided_payment else "-"
+                ),
+                "tone": "normal",
+            },
+            {
+                "label": "Voided On",
+                "value": (
+                    last_voided_payment.voided_at.astimezone(timezone.get_current_timezone()).strftime("%m/%d/%Y %I:%M %p")
+                    if last_voided_payment and last_voided_payment.voided_at else "-"
+                ),
+                "tone": "normal",
+            },
+            {
                 "label": "Latest Invoice",
                 "value": latest_invoice.invoice_number if latest_invoice else "-",
                 "tone": "normal",
@@ -334,6 +352,10 @@ class CustomerAdmin(admin.ModelAdmin):
         invoice, status, message = Invoice.generate_for_customer(customer, force=False)
         level = messages.SUCCESS if status == "created" else messages.WARNING
         self.message_user(request, f"{customer.account_number}: {message}", level=level)
+        if status == "created" and invoice:
+            save_result = save_invoices_to_configured_folder([invoice])
+            if save_result and save_result.get("saved_count"):
+                self.message_user(request, f'Saved {save_result["saved_count"]} invoice PDF(s) to {save_result["date_folder"]}.', level=messages.SUCCESS)
         return HttpResponseRedirect(reverse("admin:customers_customer_change", args=[object_id]))
 
     def force_generate_next_invoice_view(self, request, object_id):
@@ -341,6 +363,10 @@ class CustomerAdmin(admin.ModelAdmin):
         invoice, status, message = Invoice.generate_for_customer(customer, force=True)
         level = messages.SUCCESS if status == "created" else messages.WARNING
         self.message_user(request, f"{customer.account_number}: {message}", level=level)
+        if status == "created" and invoice:
+            save_result = save_invoices_to_configured_folder([invoice])
+            if save_result and save_result.get("saved_count"):
+                self.message_user(request, f'Saved {save_result["saved_count"]} invoice PDF(s) to {save_result["date_folder"]}.', level=messages.SUCCESS)
         return HttpResponseRedirect(reverse("admin:customers_customer_change", args=[object_id]))
 
     def generate_all_due_invoices_view(self, request, object_id):
@@ -348,6 +374,10 @@ class CustomerAdmin(admin.ModelAdmin):
         invoices, status, message = Invoice.generate_all_due_for_customer(customer, force=False)
         level = messages.SUCCESS if status == "created" else messages.WARNING
         self.message_user(request, f"{customer.account_number}: {message}", level=level)
+        if status == "created" and invoices:
+            save_result = save_invoices_to_configured_folder(invoices)
+            if save_result and save_result.get("saved_count"):
+                self.message_user(request, f'Saved {save_result["saved_count"]} invoice PDF(s) to {save_result["date_folder"]}.', level=messages.SUCCESS)
         return HttpResponseRedirect(reverse("admin:customers_customer_change", args=[object_id]))
 
     def force_generate_all_due_invoices_view(self, request, object_id):
@@ -355,47 +385,63 @@ class CustomerAdmin(admin.ModelAdmin):
         invoices, status, message = Invoice.generate_all_due_for_customer(customer, force=True)
         level = messages.SUCCESS if status == "created" else messages.WARNING
         self.message_user(request, f"{customer.account_number}: {message}", level=level)
+        if status == "created" and invoices:
+            save_result = save_invoices_to_configured_folder(invoices)
+            if save_result and save_result.get("saved_count"):
+                self.message_user(request, f'Saved {save_result["saved_count"]} invoice PDF(s) to {save_result["date_folder"]}.', level=messages.SUCCESS)
         return HttpResponseRedirect(reverse("admin:customers_customer_change", args=[object_id]))
 
     @admin.action(description="Generate All Due for selected customers")
     def generate_all_due_action(self, request, queryset):
-        self._run_invoice_action(request, queryset, mode="all_due", force=False)
+        return self._run_invoice_action(request, queryset, mode="all_due", force=False)
 
     @admin.action(description="Force Generate All Due for selected customers")
     def force_generate_all_due_action(self, request, queryset):
-        self._run_invoice_action(request, queryset, mode="all_due", force=True)
+        return self._run_invoice_action(request, queryset, mode="all_due", force=True)
 
     @admin.action(description="Generate Next Invoice for selected customers")
     def generate_next_action(self, request, queryset):
-        self._run_invoice_action(request, queryset, mode="next", force=False)
+        return self._run_invoice_action(request, queryset, mode="next", force=False)
 
     @admin.action(description="Force Generate Next Invoice for selected customers")
     def force_generate_next_action(self, request, queryset):
-        self._run_invoice_action(request, queryset, mode="next", force=True)
+        return self._run_invoice_action(request, queryset, mode="next", force=True)
 
     def _run_invoice_action(self, request, queryset, mode, force):
         created = 0
+        created_invoice_ids = []
         skipped_messages = []
         for customer in queryset:
             if mode == "all_due":
                 invoices, status, message = Invoice.generate_all_due_for_customer(customer, force=force)
                 if status == "created":
                     created += len(invoices)
+                    created_invoice_ids.extend(str(invoice.pk) for invoice in invoices)
                 else:
                     skipped_messages.append(f"{customer.account_number}: {message}")
             else:
                 invoice, status, message = Invoice.generate_for_customer(customer, force=force)
                 if status == "created":
                     created += 1
+                    created_invoice_ids.append(str(invoice.pk))
                 else:
                     skipped_messages.append(f"{customer.account_number}: {message}")
 
+        save_result = None
+        if created_invoice_ids:
+            created_invoices = list(Invoice.objects.filter(pk__in=created_invoice_ids).select_related("customer"))
+            save_result = save_invoices_to_configured_folder(created_invoices)
         if created:
             self.message_user(request, f"Generated {created} invoice(s).", level=messages.SUCCESS)
+        if save_result and save_result.get("saved_count"):
+            self.message_user(request, f'Saved {save_result["saved_count"]} invoice PDF(s) to {save_result["date_folder"]}.', level=messages.SUCCESS)
         for message in skipped_messages[:10]:
             self.message_user(request, message, level=messages.WARNING)
         if len(skipped_messages) > 10:
             self.message_user(request, f"{len(skipped_messages) - 10} more customers were skipped.", level=messages.WARNING)
+        if created_invoice_ids:
+            invoice_list_url = reverse("admin:billing_invoice_changelist")
+            return HttpResponseRedirect(f'{invoice_list_url}?generated_ids={",".join(created_invoice_ids)}')
 
     def export_csv_view(self, request):
         response = HttpResponse(content_type="text/csv; charset=utf-8")
@@ -813,7 +859,7 @@ class CustomerAdmin(admin.ModelAdmin):
 
     @admin.display(description="Payment Actions")
     def payment_actions(self, obj):
-        add_url = reverse("admin:payments_payment_add")
+        add_url = reverse("admin:payments_payment_quick_entry")
         list_url = reverse("admin:payments_payment_changelist")
         return format_html(
             '<a href="{}?customer={}">Add payment</a> | <a href="{}?customer__id__exact={}">View payments</a>',

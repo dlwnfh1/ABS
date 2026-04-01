@@ -31,10 +31,72 @@
         opacity: 1;
         transform: translateY(0);
     }
+
+    .codex-processing-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(17, 24, 39, 0.42);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+        padding: 24px;
+    }
+
+    .codex-processing-overlay.show {
+        display: flex;
+    }
+
+    .codex-processing-card {
+        background: #fff;
+        border-radius: 14px;
+        padding: 18px 20px;
+        min-width: 280px;
+        max-width: 420px;
+        box-shadow: 0 18px 40px rgba(0, 0, 0, 0.18);
+        display: flex;
+        align-items: center;
+        gap: 14px;
+    }
+
+    .codex-spinner {
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        border: 3px solid #dbeafe;
+        border-top-color: #2563eb;
+        animation: codex-spin 0.8s linear infinite;
+        flex: 0 0 auto;
+    }
+
+    .codex-processing-title {
+        font-weight: 700;
+        color: #111827;
+        margin-bottom: 2px;
+    }
+
+    .codex-processing-text {
+        font-size: 13px;
+        color: #4b5563;
+        line-height: 1.4;
+    }
+
+    @keyframes codex-spin {
+        to { transform: rotate(360deg); }
+    }
 </style>
 {% endblock %}
 
 {% block content %}
+<div id="codex-processing-overlay" class="codex-processing-overlay" aria-live="polite" aria-hidden="true">
+    <div class="codex-processing-card">
+        <div class="codex-spinner"></div>
+        <div>
+            <div id="codex-processing-title" class="codex-processing-title">Generating invoices...</div>
+            <div id="codex-processing-text" class="codex-processing-text">Please wait while invoices are created and saved.</div>
+        </div>
+    </div>
+</div>
 <div id="content-main">
     <h1>Invoice Generator</h1>
     <p>Select customers to generate the next invoice. Before the issue date, normal generation is blocked, but force generation is available.</p>
@@ -114,35 +176,79 @@
                 {% endfor %}
             {% endif %}
         ].filter(Boolean);
+
+        function showToast(message, offset) {
+            var stack = document.querySelector(".codex-toast-stack");
+            if (!stack) {
+                stack = document.createElement("div");
+                stack.className = "codex-toast-stack";
+                document.body.appendChild(stack);
+            }
+            var toast = document.createElement("div");
+            toast.className = "codex-toast";
+            toast.textContent = message;
+            stack.appendChild(toast);
+            var delay = offset || 0;
+            window.setTimeout(function () {
+                toast.classList.add("show");
+            }, 50 + delay);
+            window.setTimeout(function () {
+                toast.classList.remove("show");
+            }, 3400 + delay);
+            window.setTimeout(function () {
+                if (toast.parentNode) {
+                    toast.parentNode.removeChild(toast);
+                }
+                if (!stack.children.length && stack.parentNode) {
+                    stack.parentNode.removeChild(stack);
+                }
+            }, 3800 + delay);
+        }
+
         if (popupMessages.length) {
-            var stack = document.createElement("div");
-            stack.className = "codex-toast-stack";
-            document.body.appendChild(stack);
             popupMessages.forEach(function (message, index) {
-                var toast = document.createElement("div");
-                toast.className = "codex-toast";
-                toast.textContent = message;
-                stack.appendChild(toast);
-                window.setTimeout(function () {
-                    toast.classList.add("show");
-                }, 50 + (index * 80));
-                window.setTimeout(function () {
-                    toast.classList.remove("show");
-                }, 3400 + (index * 120));
-                window.setTimeout(function () {
-                    if (toast.parentNode) {
-                        toast.parentNode.removeChild(toast);
-                    }
-                    if (!stack.children.length && stack.parentNode) {
-                        stack.parentNode.removeChild(stack);
-                    }
-                }, 3800 + (index * 120));
+                showToast(message, index * 120);
             });
+        }
+
+        var overlay = document.getElementById("codex-processing-overlay");
+        var overlayTitle = document.getElementById("codex-processing-title");
+        var overlayText = document.getElementById("codex-processing-text");
+        function showProcessing(title, text) {
+            if (!overlay) {
+                return;
+            }
+            overlayTitle.textContent = title || "Working...";
+            overlayText.textContent = text || "Please wait.";
+            overlay.classList.add("show");
+            overlay.setAttribute("aria-hidden", "false");
         }
 
         var selectAll = document.getElementById("select-all-generator");
         var clearAll = document.getElementById("clear-all-generator");
         var checkboxes = Array.prototype.slice.call(document.querySelectorAll('input[name="customer_ids"]'));
+        var postForm = document.querySelector('form[method="post"]');
+        var lastAction = "";
+
+        document.querySelectorAll('form[method="post"] button[name="action"]').forEach(function (button) {
+            button.addEventListener("click", function () {
+                lastAction = button.value;
+            });
+        });
+
+        if (postForm) {
+            postForm.addEventListener("submit", function () {
+                var messages = {
+                    generate_all_due: ["Generating all due invoices...", "Creating all due invoices and saving PDFs to the configured output folder."],
+                    force_generate_all_due: ["Force generating all due invoices...", "Creating all due invoices even if they are not yet due."],
+                    generate_selected: ["Generating next invoices...", "Creating the next invoice for the selected customers."],
+                    force_generate_selected: ["Force generating next invoices...", "Creating the next invoice for the selected customers and saving PDFs."],
+                };
+                if (messages[lastAction]) {
+                    showProcessing(messages[lastAction][0], messages[lastAction][1]);
+                }
+            });
+        }
 
         if (selectAll) {
             selectAll.addEventListener("change", function () {

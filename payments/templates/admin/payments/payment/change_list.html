@@ -1,0 +1,73 @@
+{% extends "admin/change_list.html" %}
+
+{% block content_title %}
+{{ block.super }}
+<div style="margin: 12px 0 4px 0;">
+    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
+        {% for item in status_filters %}
+        <a href="{{ item.url }}" style="padding:6px 10px; border:1px solid #d1d5db; border-radius:999px; text-decoration:none; {% if item.active %}background:#111827;color:#fff;border-color:#111827;{% else %}background:#fff;color:#111827;{% endif %}">
+            {{ item.label }}
+        </a>
+        {% endfor %}
+    </div>
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        {% for item in method_filters %}
+        <a href="{{ item.url }}" style="padding:6px 10px; border:1px solid #d1d5db; border-radius:999px; text-decoration:none; {% if item.active %}background:#1f4b7a;color:#fff;border-color:#1f4b7a;{% else %}background:#fff;color:#111827;{% endif %}">
+            {{ item.label }}
+        </a>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}
+
+{% block object-tools-items %}
+<li>
+    <a href="{{ quick_payment_url }}">Quick Payment</a>
+</li>
+<li>
+    <a href="#" id="attach-scan-trigger" style="display:none;">Attach Payment File</a>
+</li>
+<li>
+    <a href="{{ import_csv_url }}">Import CSV</a>
+</li>
+<li>
+    <a href="{{ export_csv_url }}">Export CSV</a>
+</li>
+{% endblock %}
+
+{% block extrahead %}
+{{ block.super }}
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const trigger = document.getElementById("attach-scan-trigger");
+    const resultListForm = document.getElementById("changelist-form");
+    if (!trigger || !resultListForm) return;
+
+    function selectedIds() {
+        return Array.from(resultListForm.querySelectorAll('input.action-select:checked')).map((el) => el.value);
+    }
+
+    function updateTrigger() {
+        const ids = selectedIds();
+        trigger.style.display = ids.length === 1 ? "inline-block" : "none";
+    }
+
+    resultListForm.addEventListener("change", function (event) {
+        if (event.target.matches("input.action-select, #action-toggle")) {
+            updateTrigger();
+        }
+    });
+
+    trigger.addEventListener("click", function (event) {
+        event.preventDefault();
+        const ids = selectedIds();
+        if (!ids.length) return;
+        const params = new URLSearchParams();
+        ids.forEach((id) => params.append("ids", id));
+        window.location.href = "{{ attach_scan_url }}?" + params.toString();
+    });
+
+    updateTrigger();
+});
+</script>
+{% endblock %}

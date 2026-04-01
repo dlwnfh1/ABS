@@ -1,0 +1,351 @@
+{% extends "admin/base_site.html" %}
+
+{% block extrahead %}
+{{ block.super }}
+{{ media }}
+<style>
+    .codex-toast-stack {
+        position: fixed;
+        top: 16px;
+        right: 16px;
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        max-width: 360px;
+    }
+
+    .codex-toast {
+        background: #111827;
+        color: #fff;
+        border-radius: 10px;
+        padding: 12px 14px;
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.18);
+        font-size: 13px;
+        line-height: 1.4;
+        opacity: 0;
+        transform: translateY(-8px);
+        transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+
+    .codex-toast.show {
+        opacity: 1;
+        transform: translateY(0);
+    }
+</style>
+{% endblock %}
+{% block extrastyle %}
+{{ block.super }}
+<style>
+    .quick-grid {
+        display:grid;
+        grid-template-columns:minmax(320px, 420px) minmax(420px, 1fr);
+        gap:18px;
+        align-items:start;
+    }
+    .quick-card {
+        background:#fff;
+        border:1px solid #e5e7eb;
+        border-radius:14px;
+        padding:18px 20px;
+        box-shadow:0 1px 2px rgba(0,0,0,0.04);
+    }
+    .quick-card h2 { margin:0 0 14px 0; }
+    .quick-form-row { margin-bottom:14px; }
+    .quick-form-row label { display:block; font-weight:700; margin-bottom:5px; }
+    .quick-form-row input, .quick-form-row select, .quick-form-row textarea { width:100%; }
+    .quick-actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:16px; }
+    .quick-actions button, .quick-back {
+        display:inline-flex; align-items:center; justify-content:center; min-height:38px;
+        padding:0 14px; border-radius:999px; border:0; cursor:pointer; text-decoration:none;
+        background:#dbe7f5; color:#16324f; font-weight:700;
+    }
+    .quick-actions button:hover, .quick-back:hover { background:#c7d9ee; color:#0f2740; }
+    .quick-actions .primary { background:#bfd7f2; color:#12314c; }
+    .quick-actions .primary:hover { background:#a8c8eb; color:#102a42; }
+    .quick-summary { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:16px; }
+    .quick-summary-card { background:#f9fafb; border:1px solid #e5e7eb; border-radius:12px; padding:12px 14px; }
+    .quick-summary-label { color:#6b7280; font-size:12px; text-transform:uppercase; letter-spacing:0.04em; margin-bottom:6px; }
+    .quick-summary-value { font-size:20px; font-weight:700; color:#111827; }
+    .preview-table { width:100%; border-collapse:collapse; background:#fff; }
+    .preview-table th, .preview-table td { padding:10px 12px; border-bottom:1px solid #e5e7eb; text-align:left; vertical-align:top; }
+    .preview-table th { background:#f9fafb; white-space:nowrap; }
+    .preview-table td.num, .preview-table th.num { text-align:right; white-space:nowrap; }
+    .help-note { color:#6b7280; margin:0 0 12px 0; }
+
+    .codex-processing-overlay {
+        position: fixed;
+        inset: 0;
+        background: rgba(17, 24, 39, 0.42);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+        padding: 24px;
+    }
+
+    .codex-processing-overlay.show {
+        display: flex;
+    }
+
+    .codex-processing-card {
+        background: #fff;
+        border-radius: 14px;
+        padding: 18px 20px;
+        min-width: 280px;
+        max-width: 420px;
+        box-shadow: 0 18px 40px rgba(0, 0, 0, 0.18);
+        display: flex;
+        align-items: center;
+        gap: 14px;
+    }
+
+    .codex-spinner {
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        border: 3px solid #dbeafe;
+        border-top-color: #2563eb;
+        animation: codex-spin 0.8s linear infinite;
+        flex: 0 0 auto;
+    }
+
+    .codex-processing-title {
+        font-weight: 700;
+        color: #111827;
+        margin-bottom: 2px;
+    }
+
+    .codex-processing-text {
+        font-size: 13px;
+        color: #4b5563;
+        line-height: 1.4;
+    }
+
+    @keyframes codex-spin {
+        to { transform: rotate(360deg); }
+    }
+
+    @media (max-width: 1100px) { .quick-grid { grid-template-columns:1fr; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="codex-processing-overlay" class="codex-processing-overlay" aria-live="polite" aria-hidden="true">
+    <div class="codex-processing-card">
+        <div class="codex-spinner"></div>
+        <div>
+            <div id="codex-processing-title" class="codex-processing-title">Saving payment...</div>
+            <div id="codex-processing-text" class="codex-processing-text">Please wait while the payment is previewed or saved.</div>
+        </div>
+    </div>
+</div>
+<div id="content-main">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:16px;">
+        <h1 style="margin:0;">Quick Payment</h1>
+        <a class="quick-back" href="{{ payment_changelist_url }}">Back to Payments</a>
+    </div>
+
+    {% if saved_payment %}
+    <div style="margin: 0 0 16px 0; padding:12px 14px; border:1px solid #bfdbfe; background:#eff6ff; border-radius:10px; display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
+        <strong style="color:#1e3a8a;">Latest saved payment: ${{ saved_payment.amount|floatformat:2 }} for {{ saved_payment.customer.name }}</strong>
+        <a class="quick-back" href="{{ saved_attach_scan_url }}" style="background:#d9e8d0; color:#244126;">Attach File</a>
+        <a class="quick-back" href="{{ saved_receipt_pdf_url }}" style="background:#dbe7f5; color:#16324f;">Download Receipt</a>
+        <a class="quick-back" href="{{ saved_receipt_print_url }}" target="_blank" style="background:#dbe7f5; color:#16324f;">Print Receipt</a>
+    </div>
+    {% endif %}
+
+    <div class="quick-grid">
+        <div class="quick-card">
+            <h2>Enter Payment</h2>
+            <p class="help-note">Find the customer, enter the payment, preview how it will be applied, then save.</p>
+            <form method="post" id="quick-payment-form">
+                {% csrf_token %}
+                {% for field in form %}
+                <div class="quick-form-row">
+                    <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                    {{ field }}
+                    {% if field.help_text %}<div class="help">{{ field.help_text }}</div>{% endif %}
+                    {% for error in field.errors %}<div class="errornote">{{ error }}</div>{% endfor %}
+                </div>
+                {% endfor %}
+                {% for error in form.non_field_errors %}<div class="errornote">{{ error }}</div>{% endfor %}
+                <div class="quick-actions">
+                    <button type="submit" name="action" value="preview" class="primary">Preview Allocation</button>
+                    <button type="submit" name="action" value="save">Save Payment</button>
+                    <button type="submit" name="action" value="save_new">Save &amp; New Customer</button>
+                </div>
+            </form>
+        </div>
+
+        <div class="quick-card">
+            <h2>Customer Snapshot</h2>
+            {% if customer_summary %}
+                <div class="quick-summary">
+                    <div class="quick-summary-card">
+                        <div class="quick-summary-label">Customer</div>
+                        <div class="quick-summary-value">{{ customer_summary.name }}</div>
+                    </div>
+                    <div class="quick-summary-card">
+                        <div class="quick-summary-label">Account #</div>
+                        <div class="quick-summary-value">{{ customer_summary.account_number }}</div>
+                    </div>
+                    <div class="quick-summary-card">
+                        <div class="quick-summary-label">Open Balance</div>
+                        <div class="quick-summary-value">${{ customer_summary.open_balance|floatformat:2 }}</div>
+                    </div>
+                    <div class="quick-summary-card">
+                        <div class="quick-summary-label">Billing Term</div>
+                        <div class="quick-summary-value">{{ customer_summary.billing_term }}</div>
+                    </div>
+                    <div class="quick-summary-card">
+                        <div class="quick-summary-label">Current Billing Amount</div>
+                        <div class="quick-summary-value">${{ customer_summary.current_billing_amount|floatformat:2 }}</div>
+                    </div>
+                    <div class="quick-summary-card">
+                        <div class="quick-summary-label">Last Payment</div>
+                        <div class="quick-summary-value">{% if customer_summary.last_payment %}${{ customer_summary.last_payment.amount|floatformat:2 }} on {{ customer_summary.last_payment.payment_date|date:"m/d/Y" }}{% else %}-{% endif %}</div>
+                    </div>
+                </div>
+            {% else %}
+                <p class="help-note">Select a customer to see current balance and recent payment information.</p>
+            {% endif %}
+
+            <h2 style="margin-top:18px;">Allocation Preview</h2>
+            {% if preview %}
+                <div class="quick-summary" style="margin-bottom:14px;">
+                    <div class="quick-summary-card">
+                        <div class="quick-summary-label">Open Balance on Payment Date</div>
+                        <div class="quick-summary-value">${{ preview.available_balance|floatformat:2 }}</div>
+                    </div>
+                    <div class="quick-summary-card">
+                        <div class="quick-summary-label">Unapplied After Preview</div>
+                        <div class="quick-summary-value">${{ preview.unapplied_amount|floatformat:2 }}</div>
+                    </div>
+                </div>
+                <table class="preview-table">
+                    <thead>
+                        <tr>
+                            <th>Invoice #</th>
+                            <th>Billing Period</th>
+                            <th class="num">Open Amount</th>
+                            <th class="num">Will Apply</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in preview.preview_rows %}
+                        <tr>
+                            <td><a href="{% url 'admin:billing_invoice_change' row.invoice.pk %}">{{ row.invoice.invoice_number }}</a></td>
+                            <td>{{ row.invoice.period_start|date:"m/d/Y" }} - {{ row.invoice.period_end|date:"m/d/Y" }}</td>
+                            <td class="num">${{ row.amount_due|floatformat:2 }}</td>
+                            <td class="num">${{ row.applied_amount|floatformat:2 }}</td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="4">No open invoices are available for this payment date.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <p class="help-note">Use Preview Allocation to see exactly how the payment will be applied before saving.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+    (function () {
+        var popupMessages = [
+            {% if messages %}
+                {% for message in messages %}
+                    "{{ message|escapejs }}",
+                {% endfor %}
+            {% endif %}
+        ].filter(Boolean);
+
+        function showToast(message, offset) {
+            var stack = document.querySelector(".codex-toast-stack");
+            if (!stack) {
+                stack = document.createElement("div");
+                stack.className = "codex-toast-stack";
+                document.body.appendChild(stack);
+            }
+            var toast = document.createElement("div");
+            toast.className = "codex-toast";
+            toast.textContent = message;
+            stack.appendChild(toast);
+            var delay = offset || 0;
+            window.setTimeout(function () {
+                toast.classList.add("show");
+            }, 50 + delay);
+            window.setTimeout(function () {
+                toast.classList.remove("show");
+            }, 3400 + delay);
+            window.setTimeout(function () {
+                if (toast.parentNode) {
+                    toast.parentNode.removeChild(toast);
+                }
+                if (!stack.children.length && stack.parentNode) {
+                    stack.parentNode.removeChild(stack);
+                }
+            }, 3800 + delay);
+        }
+
+        if (popupMessages.length) {
+            popupMessages.forEach(function (message, index) {
+                showToast(message, index * 120);
+            });
+        }
+
+        var overlay = document.getElementById("codex-processing-overlay");
+        var overlayTitle = document.getElementById("codex-processing-title");
+        var overlayText = document.getElementById("codex-processing-text");
+
+        function showProcessing(title, text) {
+            if (!overlay) {
+                return;
+            }
+            overlayTitle.textContent = title || "Working...";
+            overlayText.textContent = text || "Please wait.";
+            overlay.classList.add("show");
+            overlay.setAttribute("aria-hidden", "false");
+        }
+
+        var form = document.getElementById("quick-payment-form");
+        var lastAction = "preview";
+        document.querySelectorAll('#quick-payment-form button[name="action"]').forEach(function (button) {
+            button.addEventListener("click", function () {
+                lastAction = button.value;
+            });
+        });
+
+        if (form) {
+            var amountInput = document.getElementById("id_amount");
+            if (amountInput && (new URLSearchParams(window.location.search).get("focus") === "amount" || amountInput.value === "")) {
+                window.setTimeout(function () {
+                    amountInput.focus();
+                    amountInput.select();
+                }, 80);
+            }
+            form.addEventListener("submit", function () {
+                if (lastAction === "save") {
+                    showProcessing(
+                        "Saving payment...",
+                        "Applying this payment to the oldest open invoices and updating balances."
+                    );
+                } else if (lastAction === "save_new") {
+                    showProcessing(
+                        "Saving payment...",
+                        "Saving this payment and clearing the customer so you can move to the next account."
+                    );
+                } else {
+                    showProcessing(
+                        "Preparing allocation preview...",
+                        "Checking open invoices and showing how this payment will be applied."
+                    );
+                }
+            });
+        }
+    })();
+</script>
+
+{% endblock %}

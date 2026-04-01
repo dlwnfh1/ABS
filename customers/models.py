@@ -60,7 +60,11 @@ class Customer(models.Model):
 
         gross_total = latest_issued_invoice.statement_base_totals()["gross_total"]
         payments_after_issue = (
-            self.payments.filter(payment_date__gt=latest_issued_invoice.issue_date, payment_date__lte=as_of_date)
+            self.payments.filter(
+                is_voided=False,
+                payment_date__gt=latest_issued_invoice.issue_date,
+                payment_date__lte=as_of_date,
+            )
             .aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
         )
         balance = Decimal(gross_total) - Decimal(payments_after_issue)

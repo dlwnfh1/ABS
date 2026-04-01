@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>A/R by Billing Term</title>
+    <style>
+        @page { size: letter; margin: 22pt 22pt 22pt 22pt; }
+        body {
+            font-family: Helvetica, Arial, sans-serif;
+            color: #15304f;
+            font-size: 9pt;
+            line-height: 1.35;
+        }
+        .header-table, .summary-table, .report-table { width: 100%; border-collapse: collapse; }
+        .header-table td { vertical-align: top; }
+        .brand { font-size: 19pt; font-weight: bold; color: #a95b43; margin-bottom: 2pt; }
+        .company-name { font-size: 12pt; font-weight: bold; color: #132c48; margin-bottom: 4pt; }
+        .muted { color: #4d6888; }
+        .title { font-size: 20pt; font-weight: bold; color: #132c48; text-align: right; margin-bottom: 4pt; }
+        .subtitle { font-size: 9pt; color: #5b7391; text-align: right; }
+        .spacer { height: 12pt; }
+        .summary-table td { width: 20%; padding-right: 7pt; vertical-align: top; }
+        .summary-table td.last { padding-right: 0; }
+        .summary-card {
+            border: 1px solid #cfd8e4;
+            background: #ffffff;
+            padding: 8pt 9pt;
+            min-height: 44pt;
+        }
+        .summary-card.total {
+            border-color: #e2c7a2;
+            background: #fff9f1;
+        }
+        .summary-label {
+            font-size: 7pt;
+            text-transform: uppercase;
+            color: #5a7390;
+            letter-spacing: 0.8pt;
+            margin-bottom: 4pt;
+        }
+        .summary-value {
+            font-size: 11pt;
+            font-weight: bold;
+            color: #132c48;
+        }
+        .section-title {
+            font-size: 10pt;
+            font-weight: bold;
+            color: #132c48;
+            margin-bottom: 6pt;
+            text-transform: uppercase;
+            letter-spacing: 1pt;
+        }
+        .report-table { border: 1px solid #d4dde8; }
+        .report-table th {
+            background: #eef3f8;
+            color: #183452;
+            font-size: 7.8pt;
+            text-transform: uppercase;
+            padding: 6pt 7pt;
+            border-bottom: 1px solid #d4dde8;
+            text-align: left;
+            letter-spacing: 0.6pt;
+        }
+        .report-table td {
+            padding: 6pt 7pt;
+            border-bottom: 1px solid #e3e9f0;
+            vertical-align: top;
+        }
+        .report-table tr:last-child td { border-bottom: 0; }
+        .report-table tfoot td {
+            background: #f7fafc;
+            font-weight: bold;
+        }
+        .num { text-align: right; white-space: nowrap; }
+        .footer-note { margin-top: 10pt; font-size: 8pt; color: #607790; }
+    </style>
+</head>
+<body>
+    <table class="header-table">
+        <tr>
+            <td style="width:56%;">
+                <div class="brand">Neo</div>
+                <div class="company-name">Neo Security Alarm Inc.</div>
+                <div class="muted">207-20 Northern Blvd, 2FL, #2, Bayside, NY 11361</div>
+                <div class="muted">Tel: (718) 460-4022, (718) 279-2790</div>
+            </td>
+            <td style="width:44%;">
+                <div class="title">A/R by Billing Term</div>
+                <div class="subtitle">Report date: {{ report_date|date:"m/d/Y" }}</div>
+            </td>
+        </tr>
+    </table>
+
+    <div class="spacer"></div>
+
+    <table class="summary-table">
+        <tr>
+            <td><div class="summary-card"><div class="summary-label">Current</div><div class="summary-value">${{ totals.current|floatformat:2 }}</div></div></td>
+            <td><div class="summary-card"><div class="summary-label">1 Term Overdue</div><div class="summary-value">${{ totals.term_1|floatformat:2 }}</div></div></td>
+            <td><div class="summary-card"><div class="summary-label">2 Terms Overdue</div><div class="summary-value">${{ totals.term_2|floatformat:2 }}</div></div></td>
+            <td><div class="summary-card"><div class="summary-label">3+ Terms Overdue</div><div class="summary-value">${{ totals.term_3_plus|floatformat:2 }}</div></div></td>
+            <td class="last"><div class="summary-card total"><div class="summary-label">Total Open A/R</div><div class="summary-value">${{ totals.total|floatformat:2 }}</div></div></td>
+        </tr>
+    </table>
+
+    <div class="spacer"></div>
+
+    <div class="section-title">Customer A/R Detail</div>
+    <table class="report-table">
+        <thead>
+            <tr>
+                <th style="width:26%;">Customer</th>
+                <th style="width:12%;">Account #</th>
+                <th style="width:12%; text-align:right;">Current</th>
+                <th style="width:12%; text-align:right;">1 Term</th>
+                <th style="width:12%; text-align:right;">2 Terms</th>
+                <th style="width:12%; text-align:right;">3+ Terms</th>
+                <th style="width:14%; text-align:right;">Total</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in rows %}
+            <tr>
+                <td>{{ row.customer.name }}</td>
+                <td>{{ row.customer.account_number }}</td>
+                <td class="num">${{ row.current|floatformat:2 }}</td>
+                <td class="num">${{ row.term_1|floatformat:2 }}</td>
+                <td class="num">${{ row.term_2|floatformat:2 }}</td>
+                <td class="num">${{ row.term_3_plus|floatformat:2 }}</td>
+                <td class="num">${{ row.total|floatformat:2 }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="7">No open receivables.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr>
+                <td colspan="2">Totals</td>
+                <td class="num">${{ totals.current|floatformat:2 }}</td>
+                <td class="num">${{ totals.term_1|floatformat:2 }}</td>
+                <td class="num">${{ totals.term_2|floatformat:2 }}</td>
+                <td class="num">${{ totals.term_3_plus|floatformat:2 }}</td>
+                <td class="num">${{ totals.total|floatformat:2 }}</td>
+            </tr>
+        </tfoot>
+    </table>
+
+    <div class="footer-note">Aging buckets are based on each customer's billing term rather than calendar days.</div>
+</body>
+</html>

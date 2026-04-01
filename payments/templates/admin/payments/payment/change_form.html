@@ -1,0 +1,38 @@
+{% extends "admin/change_form.html" %}
+
+{% block object-tools-items %}
+{{ block.super }}
+{% if receipt_pdf_url %}
+<li>
+    <a href="{{ receipt_pdf_url }}">Download Receipt</a>
+</li>
+{% endif %}
+{% if receipt_print_url %}
+<li>
+    <a href="{{ receipt_print_url }}" target="_blank">Print Receipt</a>
+</li>
+{% endif %}
+{% if scan_file_url %}
+<li>
+    <a href="{{ scan_file_url }}" target="_blank">Open Attachment</a>
+</li>
+{% endif %}
+{% if attach_scan_url %}
+<li>
+    <a href="{{ attach_scan_url }}">Attach File</a>
+</li>
+{% endif %}
+{% if void_payment_url %}
+<li>
+    <a href="{{ void_payment_url }}" style="background:#b91c1c;">Void Payment</a>
+</li>
+{% endif %}
+{% endblock %}
+
+{% block submit_buttons_top %}{% endblock %}
+
+{% block submit_buttons_bottom %}
+{% if show_save_buttons %}
+{{ block.super }}
+{% endif %}
+{% endblock %}

@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Customer Statement</title>
+    <style>
+        @page {
+            size: letter;
+            margin: 22pt 24pt 22pt 24pt;
+        }
+        body {
+            font-family: Helvetica, Arial, sans-serif;
+            color: #15304f;
+            font-size: 9.5pt;
+            line-height: 1.35;
+        }
+        .page {
+            width: 100%;
+        }
+        .header-table,
+        .summary-table,
+        .section-table,
+        .ledger-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .header-table td {
+            vertical-align: top;
+        }
+        .company-block {
+            width: 56%;
+            padding-right: 14pt;
+        }
+        .statement-block {
+            width: 44%;
+            text-align: right;
+        }
+        .brand {
+            font-size: 19pt;
+            font-weight: bold;
+            color: #a95b43;
+            margin-bottom: 2pt;
+        }
+        .company-name {
+            font-size: 12pt;
+            font-weight: bold;
+            color: #132c48;
+            margin-bottom: 5pt;
+        }
+        .muted {
+            color: #4d6888;
+        }
+        .statement-title {
+            font-size: 20pt;
+            font-weight: bold;
+            color: #132c48;
+            margin-bottom: 4pt;
+        }
+        .statement-subtitle {
+            font-size: 9pt;
+            color: #5b7391;
+            margin-bottom: 16pt;
+        }
+        .meta-chip {
+            display: inline-block;
+            border: 1px solid #c9d4e2;
+            background: #f5f8fb;
+            padding: 7pt 10pt;
+            min-width: 168pt;
+            text-align: left;
+        }
+        .meta-label {
+            font-size: 7.5pt;
+            text-transform: uppercase;
+            letter-spacing: 0.8pt;
+            color: #5a7390;
+            margin-bottom: 3pt;
+        }
+        .meta-value {
+            font-size: 12pt;
+            font-weight: bold;
+            color: #132c48;
+        }
+        .spacer-12 {
+            height: 12pt;
+        }
+        .spacer-14 {
+            height: 14pt;
+        }
+        .customer-panel {
+            border: 1px solid #c9d4e2;
+            background: #fbfcfe;
+        }
+        .customer-panel td {
+            padding: 10pt 12pt;
+            vertical-align: top;
+        }
+        .panel-title {
+            font-size: 8pt;
+            text-transform: uppercase;
+            letter-spacing: 1.2pt;
+            color: #5a7390;
+            margin-bottom: 4pt;
+        }
+        .customer-name {
+            font-size: 13pt;
+            font-weight: bold;
+            color: #132c48;
+            margin-bottom: 5pt;
+        }
+        .summary-table td {
+            width: 25%;
+            padding-right: 8pt;
+            vertical-align: top;
+        }
+        .summary-table td.last {
+            padding-right: 0;
+        }
+        .summary-card {
+            border: 1px solid #cfd8e4;
+            background: #ffffff;
+            padding: 8pt 10pt;
+            min-height: 48pt;
+        }
+        .summary-card.balance {
+            border-color: #e2c7a2;
+            background: #fff9f1;
+        }
+        .summary-label {
+            font-size: 7.5pt;
+            text-transform: uppercase;
+            letter-spacing: 1pt;
+            color: #5a7390;
+            margin-bottom: 4pt;
+        }
+        .summary-value {
+            font-size: 13pt;
+            font-weight: bold;
+            color: #132c48;
+        }
+        .section-heading {
+            font-size: 10pt;
+            font-weight: bold;
+            color: #132c48;
+            margin-bottom: 6pt;
+            text-transform: uppercase;
+            letter-spacing: 1pt;
+        }
+        .ledger-table {
+            border: 1px solid #d4dde8;
+        }
+        .ledger-table th {
+            background: #eef3f8;
+            color: #183452;
+            font-size: 8pt;
+            text-transform: uppercase;
+            letter-spacing: 0.8pt;
+            text-align: left;
+            padding: 6pt 7pt;
+            border-bottom: 1px solid #d4dde8;
+        }
+        .ledger-table td {
+            padding: 7pt 7pt;
+            border-bottom: 1px solid #e3e9f0;
+            vertical-align: top;
+            color: #183452;
+            word-break: break-word;
+        }
+        .invoice-number {
+            font-size: 8.4pt;
+            word-break: break-all;
+        }
+        .ledger-table tr:last-child td {
+            border-bottom: 0;
+        }
+        .amount,
+        .date,
+        .status {
+            white-space: nowrap;
+        }
+        .amount {
+            text-align: right;
+            font-weight: bold;
+        }
+        .empty-box {
+            border: 1px solid #d4dde8;
+            background: #fbfcfe;
+            padding: 12pt;
+            color: #607790;
+        }
+        .footer-note {
+            margin-top: 12pt;
+            font-size: 8.2pt;
+            color: #607790;
+        }
+    </style>
+</head>
+<body>
+    <div class="page">
+        <table class="header-table">
+            <tr>
+                <td class="company-block">
+                    <div class="brand">Neo</div>
+                    <div class="company-name">Neo Security Alarm Inc.</div>
+                    <div class="muted">207-20 Northern Blvd, 2FL, #2, Bayside, NY 11361</div>
+                    <div class="muted">Tel: (718) 460-4022, (718) 279-2790</div>
+                </td>
+                <td class="statement-block">
+                    <div class="statement-title">Customer Statement</div>
+                    <div class="statement-subtitle">Account activity and open balance summary</div>
+                    <div class="meta-chip">
+                        <div class="meta-label">Statement Date</div>
+                        <div class="meta-value">{{ now|date:"m/d/Y" }}</div>
+                    </div>
+                </td>
+            </tr>
+        </table>
+
+        <div class="spacer-14"></div>
+
+        <table class="customer-panel">
+            <tr>
+                <td style="width: 58%;">
+                    <div class="panel-title">Customer</div>
+                    <div class="customer-name">{{ selected_customer.name }}</div>
+                    <div><strong>Account #:</strong> {{ selected_customer.account_number }}</div>
+                    <div>{{ selected_customer.billing_address1 }}</div>
+                    {% if selected_customer.billing_address2 %}<div>{{ selected_customer.billing_address2 }}</div>{% endif %}
+                </td>
+                <td style="width: 42%;">
+                    <div class="panel-title">Contact</div>
+                    <div>{% if selected_customer.email_address %}{{ selected_customer.email_address }}{% else %}&nbsp;{% endif %}</div>
+                    <div><strong>Billing Term:</strong> {{ selected_customer.get_billing_term_display }}</div>
+                    <div><strong>Tax Rate:</strong> {{ selected_customer.tax_rate }}%</div>
+                </td>
+            </tr>
+        </table>
+
+        <div class="spacer-14"></div>
+
+        <table class="summary-table">
+            <tr>
+                <td>
+                    <div class="summary-card balance">
+                        <div class="summary-label">Open Balance</div>
+                        <div class="summary-value">${{ open_balance|floatformat:2 }}</div>
+                    </div>
+                </td>
+                <td>
+                    <div class="summary-card">
+                        <div class="summary-label">Last Payment</div>
+                        <div class="summary-value">{% if last_payment %}{{ last_payment.payment_date|date:"m/d/Y" }}{% else %}N/A{% endif %}</div>
+                    </div>
+                </td>
+                <td>
+                    <div class="summary-card">
+                        <div class="summary-label">Invoices</div>
+                        <div class="summary-value">{{ invoices|length }}</div>
+                    </div>
+                </td>
+                <td class="last">
+                    <div class="summary-card">
+                        <div class="summary-label">Payments</div>
+                        <div class="summary-value">{{ payments|length }}</div>
+                    </div>
+                </td>
+            </tr>
+        </table>
+
+        <div class="spacer-14"></div>
+
+        <div class="section-heading">Invoices</div>
+        {% if invoices %}
+            <table class="ledger-table">
+                <thead>
+                    <tr>
+                        <th style="width: 24%;">Invoice #</th>
+                        <th style="width: 22%;">Billing Period</th>
+                        <th style="width: 13%;">Issue Date</th>
+                        <th style="width: 13%;">Due Date</th>
+                        <th style="width: 12%;">Status</th>
+                        <th style="width: 16%; text-align: right;">Amount Due</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for invoice in invoices %}
+                        <tr>
+                            <td class="invoice-number">{{ invoice.invoice_number }}</td>
+                            <td>{{ invoice.period_start|date:"m/d/Y" }} - {{ invoice.period_end|date:"m/d/Y" }}</td>
+                            <td class="date">{{ invoice.issue_date|date:"m/d/Y" }}</td>
+                            <td class="date">{{ invoice.due_date|date:"m/d/Y" }}</td>
+                            <td class="status">{{ invoice.get_status_display }}</td>
+                            <td class="amount">${{ invoice.total_due|floatformat:2 }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <div class="empty-box">No invoices found for this customer.</div>
+        {% endif %}
+
+        <div class="spacer-14"></div>
+
+        <div class="section-heading">Payments</div>
+        {% if payments %}
+            <table class="ledger-table">
+                <thead>
+                    <tr>
+                        <th style="width: 16%;">Date</th>
+                        <th style="width: 16%;">Method</th>
+                        <th style="width: 20%;">Reference</th>
+                        <th style="width: 32%;">Note</th>
+                        <th style="width: 16%; text-align: right;">Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for payment in payments %}
+                        <tr>
+                            <td class="date">{{ payment.payment_date|date:"m/d/Y" }}</td>
+                            <td>{{ payment.get_method_display }}</td>
+                            <td>{% if payment.reference_number %}{{ payment.reference_number }}{% else %}&nbsp;{% endif %}</td>
+                            <td>{% if payment.note %}{{ payment.note }}{% else %}&nbsp;{% endif %}</td>
+                            <td class="amount">${{ payment.amount|floatformat:2 }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <div class="empty-box">No payments recorded for this customer.</div>
+        {% endif %}
+
+        <div class="footer-note">
+            Statement generated from the current billing system on {{ now|date:"m/d/Y" }}.
+        </div>
+    </div>
+</body>
+</html>

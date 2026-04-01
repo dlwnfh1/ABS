@@ -1,0 +1,37 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+<div style="max-width:760px;">
+    <h1 style="margin-bottom:8px;">{{ page_title|default:"Attach Payment File" }}</h1>
+    <p style="margin-bottom:20px; color:#475569;">
+        Upload a payment attachment file for the selected payment. The file will be saved to the configured local payment attachment folder.
+    </p>
+
+    <div style="padding:16px; border:1px solid #dbe3ef; border-radius:14px; background:#fff; margin-bottom:20px;">
+        <div><strong>Customer:</strong> {{ payment.customer.name }} ({{ payment.customer.account_number }})</div>
+        <div><strong>Payment Date:</strong> {{ payment.payment_date|date:"m/d/Y" }}</div>
+        <div><strong>Amount:</strong> ${{ payment.amount }}</div>
+        <div><strong>Method:</strong> {{ payment.get_method_display }}</div>
+        {% if payment.reference_number %}
+        <div><strong>Reference:</strong> {{ payment.reference_number }}</div>
+        {% endif %}
+    </div>
+
+    <form method="post" enctype="multipart/form-data" style="padding:20px; border:1px solid #dbe3ef; border-radius:14px; background:#fff;">
+        {% csrf_token %}
+        {{ form.non_field_errors }}
+        <div style="margin-bottom:16px;">
+            <label for="{{ form.scanned_check.id_for_label }}" style="display:block; font-weight:700; margin-bottom:8px;">Payment Attachment File</label>
+            {{ form.scanned_check }}
+            {% if form.scanned_check.help_text %}
+            <div style="margin-top:6px; color:#64748b;">{{ form.scanned_check.help_text }}</div>
+            {% endif %}
+            {{ form.scanned_check.errors }}
+        </div>
+        <div style="display:flex; gap:10px;">
+            <button type="submit" class="default">Save Attachment</button>
+            <a href="{{ changelist_url }}" class="button">Cancel</a>
+        </div>
+    </form>
+</div>
+{% endblock %}

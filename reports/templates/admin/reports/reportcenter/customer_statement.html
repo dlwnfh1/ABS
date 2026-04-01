@@ -13,6 +13,7 @@
     }
 
     .report-header a,
+    .report-actions a,
     .statement-filter button {
         display: inline-flex;
         align-items: center;
@@ -26,6 +27,13 @@
         text-decoration: none;
         border: 0;
         cursor: pointer;
+    }
+
+    .report-actions {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-bottom: 12px;
     }
 
     .statement-filter {
@@ -147,6 +155,10 @@
     </form>
 
     {% if selected_customer %}
+    <div class="report-actions">
+        <a href="{{ statement_pdf_url }}">Download PDF</a>
+        <a href="{{ statement_print_url }}" target="_blank">Print Statement</a>
+    </div>
     <div class="statement-summary">
         <div class="statement-card alert">
             <div class="statement-card-label">Open Balance</div>

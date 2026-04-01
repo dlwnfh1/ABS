@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Upcoming Billing Schedule</title>
+    <style>
+        @page { size: letter; margin: 22pt 22pt 22pt 22pt; }
+        body { font-family: Helvetica, Arial, sans-serif; color: #15304f; font-size: 9pt; line-height: 1.35; }
+        .header-table, .summary-table, .term-table, .report-table { width: 100%; border-collapse: collapse; }
+        .header-table td { vertical-align: top; }
+        .brand { font-size: 19pt; font-weight: bold; color: #a95b43; margin-bottom: 2pt; }
+        .company-name { font-size: 12pt; font-weight: bold; color: #132c48; margin-bottom: 4pt; }
+        .muted { color: #4d6888; }
+        .title { font-size: 20pt; font-weight: bold; color: #132c48; text-align: right; margin-bottom: 4pt; }
+        .subtitle { font-size: 9pt; color: #5b7391; text-align: right; }
+        .spacer { height: 12pt; }
+        .summary-table td { width: 20%; padding-right: 7pt; vertical-align: top; }
+        .summary-table td.last { padding-right: 0; }
+        .summary-card, .term-card { border: 1px solid #cfd8e4; background: #ffffff; padding: 8pt 9pt; min-height: 44pt; }
+        .summary-card.total { border-color: #e2c7a2; background: #fff9f1; }
+        .summary-label { font-size: 7pt; text-transform: uppercase; color: #5a7390; letter-spacing: 0.8pt; margin-bottom: 4pt; }
+        .summary-value { font-size: 11pt; font-weight: bold; color: #132c48; }
+        .term-table td { width: 25%; padding-right: 7pt; vertical-align: top; }
+        .term-table td.last { padding-right: 0; }
+        .section-title { font-size: 10pt; font-weight: bold; color: #132c48; margin-bottom: 6pt; text-transform: uppercase; letter-spacing: 1pt; }
+        .group-title { font-size: 11pt; font-weight: bold; color: #132c48; margin: 10pt 0 3pt; }
+        .group-meta { font-size: 8.5pt; color: #5b7391; margin-bottom: 5pt; }
+        .report-table { border: 1px solid #d4dde8; }
+        .report-table th { background: #eef3f8; color: #183452; font-size: 7.8pt; text-transform: uppercase; padding: 6pt 7pt; border-bottom: 1px solid #d4dde8; text-align: left; letter-spacing: 0.6pt; }
+        .report-table td { padding: 6pt 7pt; border-bottom: 1px solid #e3e9f0; vertical-align: top; }
+        .report-table tr:last-child td { border-bottom: 0; }
+        .num { text-align: right; white-space: nowrap; }
+        .ready { color: #b91c1c; font-weight: bold; }
+        .soon { color: #1f4b7a; font-weight: bold; }
+        .footer-note { margin-top: 10pt; font-size: 8pt; color: #607790; }
+    </style>
+</head>
+<body>
+    <table class="header-table">
+        <tr>
+            <td style="width:56%;">
+                <div class="brand">Neo</div>
+                <div class="company-name">Neo Security Alarm Inc.</div>
+                <div class="muted">207-20 Northern Blvd, 2FL, #2, Bayside, NY 11361</div>
+                <div class="muted">Tel: (718) 460-4022, (718) 279-2790</div>
+            </td>
+            <td style="width:44%;">
+                <div class="title">Upcoming Billing Schedule</div>
+                <div class="subtitle">{{ report_date|date:"m/d/Y" }} through {{ horizon_date|date:"m/d/Y" }}</div>
+            </td>
+        </tr>
+    </table>
+
+    <div class="spacer"></div>
+
+    <table class="summary-table">
+        <tr>
+            <td><div class="summary-card"><div class="summary-label">Ready</div><div class="summary-value">{{ totals.ready }}</div></div></td>
+            <td><div class="summary-card"><div class="summary-label">Due in 15 Days</div><div class="summary-value">{{ totals.due_in_15 }}</div></div></td>
+            <td><div class="summary-card"><div class="summary-label">Due in 30 Days</div><div class="summary-value">{{ totals.due_in_30 }}</div></div></td>
+            <td><div class="summary-card"><div class="summary-label">Customers Scheduled</div><div class="summary-value">{{ totals.total }}</div></div></td>
+            <td class="last"><div class="summary-card total"><div class="summary-label">Projected Charges</div><div class="summary-value">${{ totals.projected_amount|floatformat:2 }}</div></div></td>
+        </tr>
+    </table>
+
+    <div class="spacer"></div>
+
+    <table class="term-table">
+        <tr>
+            {% for item in term_summaries %}
+                <td {% if forloop.last %}class="last"{% endif %}>
+                    <div class="term-card">
+                        <div class="summary-label">{{ item.label }}</div>
+                        <div class="summary-value">{{ item.count }}</div>
+                        <div class="muted">Projected: ${{ item.projected_amount|floatformat:2 }}</div>
+                    </div>
+                </td>
+            {% endfor %}
+        </tr>
+    </table>
+
+    <div class="spacer"></div>
+
+    <div class="section-title">Upcoming Billing Detail</div>
+    {% for group in grouped_rows %}
+        <div class="group-title">{{ group.label }}</div>
+        <div class="group-meta">{{ group.count }} customer{{ group.count|pluralize }} scheduled | Projected charges: ${{ group.projected_amount|floatformat:2 }}</div>
+        <table class="report-table">
+            <thead>
+                <tr>
+                    <th style="width:22%;">Customer</th>
+                    <th style="width:10%;">Account #</th>
+                    <th style="width:13%;">Status</th>
+                    <th style="width:12%;">Issue Date</th>
+                    <th style="width:22%;">Billing Period</th>
+                    <th style="width:10%; text-align:right;">Amount</th>
+                    <th style="width:11%; text-align:right;">Open</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in group.rows %}
+                <tr>
+                    <td>{{ row.customer.name }}</td>
+                    <td>{{ row.customer.account_number }}</td>
+                    <td><span class="{% if row.status == 'Ready' %}ready{% else %}soon{% endif %}">{{ row.status }}</span></td>
+                    <td>{{ row.issue_date|date:"m/d/Y" }}</td>
+                    <td>{{ row.period_start|date:"m/d/Y" }} - {{ row.period_end|date:"m/d/Y" }}</td>
+                    <td class="num">${{ row.billing_amount|floatformat:2 }}</td>
+                    <td class="num">${{ row.open_balance|floatformat:2 }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% empty %}
+        <table class="report-table"><tbody><tr><td>No upcoming billing customers found.</td></tr></tbody></table>
+    {% endfor %}
+
+    <div class="footer-note">This report is ordered by next issue date and grouped by billing term for planning purposes.</div>
+</body>
+</html>

@@ -68,8 +68,17 @@ class Invoice(models.Model):
         return Decimal(amount).quantize(Decimal("0.01"))
 
     @property
+    def current_period_tax(self) -> Decimal:
+        tax = (self.current_period_amount * self.tax_rate / Decimal("100")).quantize(Decimal("0.01"))
+        return max(tax, Decimal("0.00"))
+
+    @property
+    def current_period_total(self) -> Decimal:
+        return (self.current_period_amount + self.current_period_tax).quantize(Decimal("0.01"))
+
+    @property
     def last_payment(self):
-        return self.customer.payments.order_by("-payment_date", "-id").first()
+        return self.customer.payments.filter(is_voided=False).order_by("-payment_date", "-id").first()
 
     @property
     def last_payment_summary(self) -> str:
@@ -86,10 +95,10 @@ class Invoice(models.Model):
     def customer_payments(self):
         from payments.models import Payment
 
-        return Payment.objects.filter(customer=self.customer)
+        return Payment.objects.filter(customer=self.customer, is_voided=False)
 
     def allocated_amount_as_of(self, as_of_date=None, exclude_payment_id=None) -> Decimal:
-        allocations = self.allocations.all()
+        allocations = self.allocations.filter(payment__is_voided=False)
         if as_of_date:
             allocations = allocations.filter(payment__payment_date__lte=as_of_date)
         if exclude_payment_id:
@@ -135,11 +144,16 @@ class Invoice(models.Model):
             "gross_total": gross_total,
         }
 
-    def amount_due_for_allocation(self, as_of_date=None, exclude_payment_id=None) -> Decimal:
-        totals = self.statement_base_totals(exclude_payment_id=exclude_payment_id)
+    def unique_amount_due_for_allocation(self, as_of_date=None, exclude_payment_id=None) -> Decimal:
         allocated = self.allocated_amount_as_of(as_of_date=as_of_date, exclude_payment_id=exclude_payment_id)
-        due = totals["gross_total"] - allocated
+        due = self.current_period_total - allocated
         return max(due.quantize(Decimal("0.01")), Decimal("0.00"))
+
+    def amount_due_for_allocation(self, as_of_date=None, exclude_payment_id=None) -> Decimal:
+        return self.unique_amount_due_for_allocation(
+            as_of_date=as_of_date,
+            exclude_payment_id=exclude_payment_id,
+        )
 
     def rebuild_items(self):
         if not self.pk:

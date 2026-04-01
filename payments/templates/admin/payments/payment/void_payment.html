@@ -1,0 +1,124 @@
+{% extends "admin/base_site.html" %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+    .void-card {
+        max-width: 720px;
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 14px;
+        padding: 20px 22px;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+    }
+
+    .void-summary {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 12px;
+        margin: 14px 0 18px 0;
+    }
+
+    .void-summary-card {
+        background: #f9fafb;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 12px 14px;
+    }
+
+    .void-summary-label {
+        color: #6b7280;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        margin-bottom: 6px;
+    }
+
+    .void-summary-value {
+        font-size: 20px;
+        font-weight: 700;
+        color: #111827;
+    }
+
+    .void-form-row label {
+        display: block;
+        font-weight: 700;
+        margin-bottom: 6px;
+    }
+
+    .void-form-row textarea {
+        width: 100%;
+    }
+
+    .void-actions {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-top: 18px;
+    }
+
+    .void-actions button,
+    .void-actions a {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 38px;
+        padding: 0 14px;
+        border-radius: 999px;
+        text-decoration: none;
+        border: 0;
+        cursor: pointer;
+        font-weight: 700;
+    }
+
+    .void-actions button {
+        background: #b91c1c;
+        color: #fff;
+    }
+
+    .void-actions a {
+        background: #4b5563;
+        color: #fff;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+    <div class="void-card">
+        <h1 style="margin-top:0;">Void Payment</h1>
+        <p>This keeps the payment record for history, removes its invoice allocations, and recalculates customer balances.</p>
+
+        <div class="void-summary">
+            <div class="void-summary-card">
+                <div class="void-summary-label">Customer</div>
+                <div class="void-summary-value">{{ payment.customer.name }}</div>
+            </div>
+            <div class="void-summary-card">
+                <div class="void-summary-label">Account #</div>
+                <div class="void-summary-value">{{ payment.customer.account_number }}</div>
+            </div>
+            <div class="void-summary-card">
+                <div class="void-summary-label">Payment Amount</div>
+                <div class="void-summary-value">${{ payment.amount|floatformat:2 }}</div>
+            </div>
+            <div class="void-summary-card">
+                <div class="void-summary-label">Payment Date</div>
+                <div class="void-summary-value">{{ payment.payment_date|date:"m/d/Y" }}</div>
+            </div>
+        </div>
+
+        <form method="post">
+            {% csrf_token %}
+            <div class="void-form-row">
+                <label for="{{ form.void_reason.id_for_label }}">Void Reason</label>
+                {{ form.void_reason }}
+            </div>
+            <div class="void-actions">
+                <button type="submit">Void Payment</button>
+                <a href="{% url 'admin:payments_payment_change' payment.pk %}">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

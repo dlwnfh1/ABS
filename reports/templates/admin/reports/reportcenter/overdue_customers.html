@@ -11,14 +11,12 @@
         gap: 12px;
         margin-bottom: 16px;
     }
-
     .report-actions {
         display: flex;
         flex-wrap: wrap;
         gap: 10px;
         align-items: center;
     }
-
     .report-header a {
         display: inline-flex;
         align-items: center;
@@ -31,17 +29,32 @@
         font-weight: 700;
         text-decoration: none;
     }
-
     .report-header a.secondary {
         background: #1f4b7a;
     }
-
+    .summary-cards {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-bottom: 16px;
+    }
+    .summary-card {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 12px 14px;
+        min-width: 190px;
+    }
+    .summary-card strong {
+        display: block;
+        font-size: 20px;
+        margin-top: 6px;
+    }
     .report-table {
         width: 100%;
         border-collapse: collapse;
         background: #fff;
     }
-
     .report-table th,
     .report-table td {
         padding: 10px 12px;
@@ -49,22 +62,15 @@
         text-align: left;
         vertical-align: top;
     }
-
     .report-table th {
         background: #f9fafb;
         font-weight: 700;
         white-space: nowrap;
     }
-
     .report-table td.num,
     .report-table th.num {
         text-align: right;
         white-space: nowrap;
-    }
-
-    .report-table tfoot td {
-        font-weight: 700;
-        background: #f9fafb;
     }
 </style>
 {% endblock %}
@@ -73,25 +79,34 @@
 <div id="content-main">
     <div class="report-header">
         <div>
-            <h1>A/R by Billing Term</h1>
+            <h1>Past-Due Customers</h1>
             <p>Report date: {{ report_date|date:"m/d/Y" }}</p>
         </div>
         <div class="report-actions">
-            <a class="secondary" href="{{ ar_aging_pdf_url }}">Download PDF</a>
-            <a class="secondary" href="{{ ar_aging_csv_url }}">Export CSV</a>
+            <a class="secondary" href="{{ overdue_pdf_url }}">Download PDF</a>
+            <a class="secondary" href="{{ overdue_csv_url }}">Export CSV</a>
             <a href="{{ reports_home_url }}">Back to Reports</a>
         </div>
     </div>
+
+    <div class="summary-cards">
+        <div class="summary-card">Customers<strong>{{ totals.customer_count }}</strong></div>
+        <div class="summary-card">Overdue Invoices<strong>{{ totals.overdue_invoices }}</strong></div>
+        <div class="summary-card">Highest Terms Past Due<strong>{{ totals.max_terms_overdue }}</strong></div>
+        <div class="summary-card">Overdue Total<strong>${{ totals.overdue_total|floatformat:2 }}</strong></div>
+        <div class="summary-card">Open Balance<strong>${{ totals.open_total|floatformat:2 }}</strong></div>
+    </div>
+
     <table class="report-table">
         <thead>
             <tr>
                 <th>Customer</th>
                 <th>Account #</th>
-                <th class="num">Current</th>
-                <th class="num">1 Term Past Due</th>
-                <th class="num">2 Terms Past Due</th>
-                <th class="num">3+ Terms Past Due</th>
-                <th class="num">Total</th>
+                <th class="num">Overdue Invoices</th>
+                <th>Oldest Due Date</th>
+                <th class="num">Most Terms Past Due</th>
+                <th class="num">Overdue Total</th>
+                <th class="num">Open Balance</th>
                 <th>Actions</th>
             </tr>
         </thead>
@@ -100,30 +115,19 @@
             <tr>
                 <td>{{ row.customer.name }}</td>
                 <td>{{ row.customer.account_number }}</td>
-                <td class="num">${{ row.current|floatformat:2 }}</td>
-                <td class="num">${{ row.term_1|floatformat:2 }}</td>
-                <td class="num">${{ row.term_2|floatformat:2 }}</td>
-                <td class="num">${{ row.term_3_plus|floatformat:2 }}</td>
-                <td class="num"><strong>${{ row.total|floatformat:2 }}</strong></td>
+                <td class="num">{{ row.invoice_count }}</td>
+                <td>{{ row.oldest_due_date|date:"m/d/Y" }}</td>
+                <td class="num">{{ row.max_terms_overdue }}</td>
+                <td class="num">${{ row.overdue_total|floatformat:2 }}</td>
+                <td class="num">${{ row.open_total|floatformat:2 }}</td>
                 <td><a href="{{ row.invoice_url }}">View invoices</a> | <a href="{{ row.payment_url }}">Add payment</a></td>
             </tr>
             {% empty %}
             <tr>
-                <td colspan="8">No open receivables.</td>
+                <td colspan="8">No overdue customers found.</td>
             </tr>
             {% endfor %}
         </tbody>
-        <tfoot>
-            <tr>
-                <td colspan="2">Totals</td>
-                <td class="num">${{ totals.current|floatformat:2 }}</td>
-                <td class="num">${{ totals.term_1|floatformat:2 }}</td>
-                <td class="num">${{ totals.term_2|floatformat:2 }}</td>
-                <td class="num">${{ totals.term_3_plus|floatformat:2 }}</td>
-                <td class="num">${{ totals.total|floatformat:2 }}</td>
-                <td></td>
-            </tr>
-        </tfoot>
     </table>
 </div>
 {% endblock %}
