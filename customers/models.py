@@ -127,3 +127,7 @@ class Service(models.Model):
             self.service_address2 = self.customer.billing_address2
         super().save(*args, **kwargs)
         self.customer.ensure_initial_invoice()
+
+
+
+
