@@ -1,0 +1,206 @@
+{% extends "portal/base.html" %}
+{% block content %}
+<div class="row">
+    <div class="card">
+        <h3>Enter Payment</h3>
+        <p class="page-sub">고객을 선택하고 결제 금액을 입력한 뒤, 미리보기 또는 저장을 할 수 있습니다.</p>
+        <form method="post" enctype="multipart/form-data">
+            {% csrf_token %}
+            <div class="form-grid">
+                <div class="full">
+                    <label for="customer-filter">Customer Search</label>
+                    <input type="text" id="customer-filter" placeholder="Type customer name or account number">
+                </div>
+                {% for field in form %}
+                    <div class="{% if field.name == 'note' or field.name == 'attachment_file' %}full{% endif %}">
+                        <label for="id_{{ field.name }}">{{ field.label }}</label>
+                        {{ field }}
+                        {% if field.name == "attachment_file" %}
+                            <div id="portal-attachment-hint" class="message info" style="display:none; margin-top:10px;">
+                                Preview Allocation을 먼저 누르면 브라우저 보안 때문에 파일 선택이 지워질 수 있습니다. 저장 직전에 파일을 다시 선택해 주세요.
+                            </div>
+                        {% endif %}
+                        {% if field.errors %}
+                            <div class="message error">{{ field.errors|striptags }}</div>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            </div>
+            <div class="message info" style="margin-top:12px;">
+                첨부파일은 바로 저장할 수 있습니다. 다만 <strong>Preview Allocation</strong>을 먼저 누르면 브라우저 보안 때문에 파일 선택이 지워질 수 있으니, 저장 전에 파일을 다시 선택해 주세요.
+            </div>
+            <div class="btn-row">
+                <button class="btn-primary" type="submit" name="action" value="preview">Preview Allocation</button>
+                <button class="btn-secondary" type="submit" name="action" value="save">Save Payment</button>
+                <button class="btn-muted" type="submit" name="action" value="save_new">Save &amp; New Customer</button>
+            </div>
+        </form>
+    </div>
+
+    <div class="card">
+        <h3>Customer Snapshot</h3>
+        {% if customer_summary %}
+            <div class="grid cards-3">
+                <div class="card">
+                    <div class="stat-label">Customer</div>
+                    <div class="stat-value" style="font-size:1.35rem;">{{ customer_summary.name }}</div>
+                </div>
+                <div class="card">
+                    <div class="stat-label">Account #</div>
+                    <div class="stat-value" style="font-size:1.35rem;">{{ customer_summary.account_number }}</div>
+                </div>
+                <div class="card">
+                    <div class="stat-label">Open Balance</div>
+                    <div class="stat-value" style="font-size:1.35rem;">${{ customer_summary.open_balance }}</div>
+                </div>
+                <div class="card">
+                    <div class="stat-label">Billing Term</div>
+                    <div class="stat-value" style="font-size:1.35rem;">{{ customer_summary.billing_term }}</div>
+                </div>
+                <div class="card">
+                    <div class="stat-label">Current Billing</div>
+                    <div class="stat-value" style="font-size:1.35rem;">${{ customer_summary.current_billing_amount }}</div>
+                </div>
+                <div class="card">
+                    <div class="stat-label">Last Payment</div>
+                    <div class="stat-value" style="font-size:1.35rem;">
+                        {% if customer_summary.last_payment %}
+                            ${{ customer_summary.last_payment.amount }} on {{ customer_summary.last_payment.payment_date|date:"m/d/Y" }}
+                        {% else %}
+                            -
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            <div class="btn-row" style="margin-top:14px;">
+                <a class="btn btn-secondary" href="{{ customer_statement_url }}">View Payment History</a>
+            </div>
+        {% else %}
+            <p class="page-sub">고객을 선택하면 현재 잔액과 최근 결제가 표시됩니다.</p>
+        {% endif %}
+
+        {% if preview %}
+            <div style="margin-top:20px;">
+                <h3>Allocation Preview</h3>
+                <div class="grid cards-3">
+                    <div class="card">
+                        <div class="stat-label">Open Balance on Payment Date</div>
+                        <div class="stat-value" style="font-size:1.5rem;">${{ preview.available_balance }}</div>
+                    </div>
+                    <div class="card">
+                        <div class="stat-label">Unapplied After Preview</div>
+                        <div class="stat-value" style="font-size:1.5rem;">${{ preview.unapplied_amount }}</div>
+                    </div>
+                </div>
+                <div class="table-wrap" style="margin-top:16px;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Invoice #</th>
+                                <th>Billing Period</th>
+                                <th>Open Amount</th>
+                                <th>Will Apply</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        {% for row in preview.preview_rows %}
+                            <tr>
+                                <td class="mono">{{ row.invoice.invoice_number }}</td>
+                                <td>{{ row.invoice.period_start|date:"m/d/Y" }} - {{ row.invoice.period_end|date:"m/d/Y" }}</td>
+                                <td>${{ row.amount_due }}</td>
+                                <td>${{ row.applied_amount }}</td>
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td colspan="4">No allocatable invoices found for that payment date.</td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        {% endif %}
+
+        {% if saved_payment %}
+            <div class="card" style="margin-top:20px;background:#eef6ff;">
+                <div class="stat-label">Saved Payment</div>
+                <div style="font-weight:800;font-size:1.2rem;">${{ saved_payment.amount }} for {{ saved_payment.customer.name }}</div>
+                <div class="btn-row">
+                    <form method="post" enctype="multipart/form-data" action="{{ saved_attachment_url }}">
+                        {% csrf_token %}
+                        <input type="file" name="attachment_file" style="margin-bottom:8px;">
+                        <button class="btn btn-secondary" type="submit">Attach File</button>
+                    </form>
+                    <a class="btn btn-secondary" href="{{ saved_receipt_print_url }}" target="_blank">Print Receipt</a>
+                    <a class="btn btn-secondary" href="{{ saved_receipt_pdf_url }}">Download Receipt</a>
+                    {% if saved_payment.scanned_check_path %}
+                        <a class="btn btn-secondary" href="{{ saved_scan_file_url }}" target="_blank">Open Attachment</a>
+                    {% endif %}
+                </div>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+    (function() {
+        const filterInput = document.getElementById('customer-filter');
+        const select = document.getElementById('id_customer');
+        if (filterInput && select) {
+            const options = Array.from(select.options).map(option => ({
+                value: option.value,
+                text: option.text,
+                selected: option.selected
+            }));
+            filterInput.addEventListener('input', function() {
+                const query = filterInput.value.toLowerCase();
+                const current = select.value;
+                select.innerHTML = '';
+                options.forEach(option => {
+                    if (!option.value || option.text.toLowerCase().includes(query)) {
+                        const el = document.createElement('option');
+                        el.value = option.value;
+                        el.textContent = option.text;
+                        if (option.value === current) {
+                            el.selected = true;
+                        }
+                        select.appendChild(el);
+                    }
+                });
+            });
+            select.addEventListener('change', function() {
+                if (!select.value) {
+                    return;
+                }
+                const params = new URLSearchParams(window.location.search);
+                params.set('customer', select.value);
+                const paymentDateInput = document.getElementById('id_payment_date');
+                const methodInput = document.getElementById('id_method');
+                if (paymentDateInput && paymentDateInput.value) {
+                    params.set('payment_date', paymentDateInput.value);
+                }
+                if (methodInput && methodInput.value) {
+                    params.set('method', methodInput.value);
+                }
+                window.location.search = params.toString();
+            });
+        }
+
+        const focusAmount = new URLSearchParams(window.location.search).get('focus');
+        if (focusAmount === 'amount') {
+            const amountInput = document.getElementById('id_amount');
+            if (amountInput) {
+                amountInput.focus();
+            }
+        }
+
+        const attachmentInput = document.getElementById('id_attachment_file');
+        const attachmentHint = document.getElementById('portal-attachment-hint');
+        if (attachmentInput && attachmentHint) {
+            attachmentInput.addEventListener('change', function() {
+                attachmentHint.style.display = attachmentInput.files && attachmentInput.files.length ? 'block' : 'none';
+            });
+        }
+    })();
+</script>
+{% endblock %}

@@ -64,6 +64,10 @@ class QuickPaymentForm(forms.Form):
     method = forms.ChoiceField(choices=Payment.METHOD_CHOICES, initial=Payment.METHOD_CHECK)
     reference_number = forms.CharField(max_length=100, required=False)
     note = forms.CharField(required=False, widget=forms.Textarea(attrs={"rows": 3}))
+    attachment_file = forms.FileField(
+        required=False,
+        help_text="Optional. If you preview first, choose the file again before saving.",
+    )
 
     def __init__(self, *args, customer_field=None, admin_site=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -81,6 +85,7 @@ class QuickPaymentForm(forms.Form):
             "method",
             "reference_number",
             "note",
+            "attachment_file",
         ])
 
 
@@ -240,7 +245,7 @@ class PaymentAdmin(admin.ModelAdmin):
             initial["method"] = request.GET.get("method")
 
         if request.method == "POST":
-            form = QuickPaymentForm(request.POST, customer_field=customer_field, admin_site=self.admin_site)
+            form = QuickPaymentForm(request.POST, request.FILES, customer_field=customer_field, admin_site=self.admin_site)
             action = request.POST.get("action", "preview")
             if form.is_valid():
                 selected_customer = form.cleaned_data["customer"]
@@ -249,30 +254,65 @@ class PaymentAdmin(admin.ModelAdmin):
                     form.cleaned_data["payment_date"],
                     form.cleaned_data["amount"],
                 )
-                if action in {"save", "save_new"}:
-                    payment = Payment.objects.create(
-                        customer=selected_customer,
-                        payment_date=form.cleaned_data["payment_date"],
-                        amount=form.cleaned_data["amount"],
-                        method=form.cleaned_data["method"],
-                        reference_number=form.cleaned_data["reference_number"],
-                        note=form.cleaned_data["note"],
-                    )
+                if action == "preview" and form.cleaned_data.get("attachment_file"):
                     self.message_user(
                         request,
-                        f"Payment of ${payment.amount:.2f} saved for {selected_customer.name} and applied automatically.",
-                        level=messages.SUCCESS,
+                        "If you use Preview Allocation first, choose the attachment file again before saving.",
+                        level=messages.INFO,
                     )
-                    if action == "save":
-                        return redirect("admin:payments_payment_change", object_id=payment.pk)
-                    base_url = reverse("admin:payments_payment_quick_entry")
-                    query = (
-                        f"saved_payment={payment.pk}"
-                        f"&payment_date={form.cleaned_data['payment_date']:%Y-%m-%d}"
-                        f"&method={form.cleaned_data['method']}"
-                        f"&focus=amount"
-                    )
-                    return redirect(f"{base_url}?{query}")
+                if action in {"save", "save_new"}:
+                    try:
+                        payment = Payment.objects.create(
+                            customer=selected_customer,
+                            payment_date=form.cleaned_data["payment_date"],
+                            amount=form.cleaned_data["amount"],
+                            method=form.cleaned_data["method"],
+                            reference_number=form.cleaned_data["reference_number"],
+                            note=form.cleaned_data["note"],
+                        )
+                    except ValidationError as exc:
+                        for field, errors in exc.message_dict.items():
+                            if field == "__all__":
+                                for error in errors:
+                                    form.add_error(None, error)
+                            else:
+                                for error in errors:
+                                    form.add_error(field, error)
+                    else:
+                        upload = form.cleaned_data.get("attachment_file")
+                        if upload:
+                            try:
+                                saved_path = self._save_scanned_check_file(payment, upload)
+                            except ValueError as exc:
+                                self.message_user(request, str(exc), level=messages.WARNING)
+                            else:
+                                uploaded_at = timezone.now()
+                                Payment.objects.filter(pk=payment.pk).update(
+                                    scanned_check_path=str(saved_path),
+                                    scanned_check_uploaded_at=uploaded_at,
+                                )
+                                payment.scanned_check_path = str(saved_path)
+                                payment.scanned_check_uploaded_at = uploaded_at
+                                self.message_user(
+                                    request,
+                                    f"Payment attachment saved for {selected_customer.name}.",
+                                    level=messages.SUCCESS,
+                                )
+                        self.message_user(
+                            request,
+                            f"Payment of ${payment.amount:.2f} saved for {selected_customer.name} and applied automatically.",
+                            level=messages.SUCCESS,
+                        )
+                        if action == "save":
+                            return redirect("admin:payments_payment_change", object_id=payment.pk)
+                        base_url = reverse("admin:payments_payment_quick_entry")
+                        query = (
+                            f"saved_payment={payment.pk}"
+                            f"&payment_date={form.cleaned_data['payment_date']:%Y-%m-%d}"
+                            f"&method={form.cleaned_data['method']}"
+                            f"&focus=amount"
+                        )
+                        return redirect(f"{base_url}?{query}")
         else:
             form = QuickPaymentForm(initial=initial, customer_field=customer_field, admin_site=self.admin_site)
             selected_customer = form.initial.get("customer")

@@ -1,0 +1,21 @@
+{% extends "portal/base.html" %}
+{% block content %}
+<div class="grid cards-4">
+    <div class="card"><div class="stat-label">Current</div><div class="stat-value">${{ totals.current }}</div></div>
+    <div class="card"><div class="stat-label">1 Term Overdue</div><div class="stat-value">${{ totals.term_1 }}</div></div>
+    <div class="card"><div class="stat-label">2 Terms Overdue</div><div class="stat-value">${{ totals.term_2 }}</div></div>
+    <div class="card"><div class="stat-label">3+ Terms Overdue</div><div class="stat-value">${{ totals.term_3_plus }}</div></div>
+</div>
+<div class="card" style="margin-top:18px;">
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>Customer</th><th>Account #</th><th>Current</th><th>1 Term</th><th>2 Terms</th><th>3+ Terms</th><th>Total</th></tr></thead>
+            <tbody>
+            {% for row in rows %}
+                <tr><td>{{ row.customer.name }}</td><td>{{ row.customer.account_number }}</td><td>${{ row.current }}</td><td>${{ row.term_1 }}</td><td>${{ row.term_2 }}</td><td>${{ row.term_3_plus }}</td><td>${{ row.total }}</td></tr>
+            {% empty %}<tr><td colspan="7">No balances found.</td></tr>{% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

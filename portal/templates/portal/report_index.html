@@ -1,0 +1,8 @@
+{% extends "portal/base.html" %}
+{% block content %}
+<div class="report-links">
+    {% for item in report_links %}
+        <a class="report-link" href="{{ item.url }}"><h3>{{ item.title }}</h3><p>{{ item.description }}</p></a>
+    {% endfor %}
+</div>
+{% endblock %}

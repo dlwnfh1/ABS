@@ -1,0 +1,45 @@
+{% extends "portal/base.html" %}
+{% block content %}
+<div class="grid cards-4">
+    <div class="card"><div class="stat-label">Ready Now</div><div class="stat-value">{{ ready_count }}</div></div>
+    <div class="card"><div class="stat-label">Due in 15 Days</div><div class="stat-value">{{ due_15_count }}</div></div>
+    <div class="card"><div class="stat-label">Due in 30 Days</div><div class="stat-value">{{ due_30_count }}</div></div>
+    <div class="card"><div class="stat-label">Open Balance</div><div class="stat-value">${{ total_open }}</div></div>
+</div>
+<div class="row" style="margin-top:18px;">
+    <div class="card">
+        <h3>Recent Payments</h3>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Customer</th><th>Date</th><th>Amount</th><th>Method</th></tr></thead>
+                <tbody>
+                {% for payment in recent_payments %}
+                    <tr><td>{{ payment.customer.name }}</td><td>{{ payment.payment_date|date:"m/d/Y" }}</td><td>${{ payment.amount }}</td><td>{{ payment.get_method_display }}</td></tr>
+                {% empty %}
+                    <tr><td colspan="4">No recent payments.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <div class="card">
+        <h3>Latest Invoices</h3>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Invoice #</th><th>Customer</th><th>PDF</th></tr></thead>
+                <tbody>
+                {% for invoice in latest_invoices %}
+                    <tr>
+                        <td class="mono">{{ invoice.invoice_number }}</td>
+                        <td>{{ invoice.customer.name }}</td>
+                        <td><a href="{% url 'portal:invoice_pdf' invoice.pk %}">PDF</a></td>
+                    </tr>
+                {% empty %}
+                    <tr><td colspan="3">No invoices yet.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

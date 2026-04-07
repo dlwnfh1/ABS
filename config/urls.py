@@ -15,12 +15,15 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import path
+from django.urls import include, path
+from django.views.generic import RedirectView
 
 admin.site.site_header = "NEO ALARM BILLING SYSTEM"
 admin.site.site_title = "NEO ALARM BILLING SYSTEM"
 admin.site.index_title = "NEO ALARM BILLING SYSTEM"
 
 urlpatterns = [
+    path("", RedirectView.as_view(pattern_name="portal:dashboard", permanent=False)),
+    path("app/", include("portal.urls")),
     path('admin/', admin.site.urls),
 ]

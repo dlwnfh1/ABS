@@ -1,0 +1,14 @@
+{% extends "portal/base.html" %}
+{% block content %}
+<div class="grid cards-4">
+    <div class="card"><div class="stat-label">Customers</div><div class="stat-value">{{ totals.customer_count }}</div></div>
+    <div class="card"><div class="stat-label">Overdue Invoices</div><div class="stat-value">{{ totals.overdue_invoices }}</div></div>
+    <div class="card"><div class="stat-label">Overdue Total</div><div class="stat-value">${{ totals.overdue_total }}</div></div>
+    <div class="card"><div class="stat-label">Highest Terms Past Due</div><div class="stat-value">{{ totals.max_terms_overdue }}</div></div>
+</div>
+<div class="card" style="margin-top:18px;">
+    <div class="table-wrap"><table><thead><tr><th>Customer</th><th>Account #</th><th>Invoices</th><th>Oldest Due</th><th>Max Terms</th><th>Overdue Total</th><th>Open Balance</th></tr></thead><tbody>
+    {% for row in rows %}<tr><td>{{ row.customer.name }}</td><td>{{ row.customer.account_number }}</td><td>{{ row.invoice_count }}</td><td>{{ row.oldest_due_date|date:"m/d/Y" }}</td><td>{{ row.max_terms_overdue }}</td><td>${{ row.overdue_total }}</td><td>${{ row.open_total }}</td></tr>{% empty %}<tr><td colspan="7">No overdue customers.</td></tr>{% endfor %}
+    </tbody></table></div>
+</div>
+{% endblock %}
