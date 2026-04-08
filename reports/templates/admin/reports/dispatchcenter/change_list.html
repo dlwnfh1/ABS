@@ -1,0 +1,60 @@
+{% extends "admin/base_site.html" %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+    .dispatch-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 16px;
+        margin-top: 18px;
+    }
+
+    .dispatch-card {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 12px;
+        padding: 18px;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    }
+
+    .dispatch-card h2 {
+        margin: 0 0 8px 0;
+        font-size: 20px;
+    }
+
+    .dispatch-card p {
+        margin: 0 0 16px 0;
+        color: #4b5563;
+        line-height: 1.5;
+    }
+
+    .dispatch-card a {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 38px;
+        padding: 0 14px;
+        border-radius: 999px;
+        background: #4b5563;
+        color: #fff;
+        text-decoration: none;
+        font-weight: 700;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+    <h1>Invoice Dispatch</h1>
+    <div class="dispatch-grid">
+        {% for item in dispatch_links %}
+        <div class="dispatch-card">
+            <h2>{{ item.title }}</h2>
+            <p>{{ item.description }}</p>
+            <a href="{{ item.url }}">Open dispatch</a>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

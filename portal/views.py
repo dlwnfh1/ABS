@@ -16,10 +16,17 @@ from django.utils.text import slugify
 from xhtml2pdf import pisa
 
 from billing.models import Invoice, add_months
-from billing.pdf_utils import ensure_md5_compat, logo_symbol_data_uri, render_invoice_pdf_bytes
+from billing.pdf_utils import (
+    ensure_md5_compat,
+    get_invoice_output_base_folder,
+    list_saved_invoice_pdf_records,
+    merge_saved_invoice_pdf_records,
+    logo_symbol_data_uri,
+    render_invoice_pdf_bytes,
+)
 from customers.models import Customer
 from payments.models import Payment
-from reports.models import SystemSetting
+from reports.models import InvoiceGenerationBatch, SystemSetting
 
 from .forms import PortalQuickPaymentForm
 
@@ -27,9 +34,9 @@ from .forms import PortalQuickPaymentForm
 def _portal_context(request, **extra):
     return {
         "nav_items": [
-            {"label": "Dashboard", "url": reverse("portal:dashboard"), "key": "dashboard"},
+            {"label": "Customers", "url": reverse("portal:customer_list"), "key": "customers"},
             {"label": "Quick Payment", "url": reverse("portal:quick_payment"), "key": "payments"},
-            {"label": "Invoices", "url": reverse("portal:invoice_list"), "key": "invoices"},
+            {"label": "Invoice Dispatch", "url": reverse("portal:saved_invoice_list"), "key": "dispatch"},
             {"label": "Reports", "url": reverse("portal:report_index"), "key": "reports"},
         ],
         **extra,
@@ -328,32 +335,90 @@ def _build_upcoming_billing_data():
     return today, horizon, rows, grouped_rows, term_summaries, totals
 
 
+def _customer_workflow_snapshot(customer, as_of_date):
+    latest_invoice = customer.invoices.exclude(status=Invoice.STATUS_VOID).order_by("-period_start", "-id").first()
+    if latest_invoice:
+        period_start = latest_invoice.next_period_start
+        period_end = latest_invoice.next_period_end
+        issue_date = period_start - timedelta(days=15)
+        existing_invoice = Invoice.objects.filter(customer=customer, period_start=period_start, period_end=period_end).first()
+        if existing_invoice:
+            status = "Already Issued"
+        else:
+            days_until_issue = (issue_date - as_of_date).days
+            if days_until_issue <= 0:
+                status = "Ready"
+            elif days_until_issue <= 15:
+                status = "Due in 15 Days"
+            elif days_until_issue <= 30:
+                status = "Due in 30 Days"
+            else:
+                status = "Already Issued"
+        return {
+            "status": status,
+            "period": f"{period_start:%m/%d/%Y} - {period_end:%m/%d/%Y}",
+            "issue_date": issue_date,
+        }
+    if customer.is_active and customer.can_generate_initial_invoice():
+        issue_date = customer.first_billing_date - timedelta(days=15)
+        return {
+            "status": "Ready" if issue_date <= as_of_date else "Due in 15 Days",
+            "period": "",
+            "issue_date": issue_date,
+        }
+    return {"status": "Setup Needed", "period": "", "issue_date": None}
+
+
 @login_required(login_url="portal:login")
 def dashboard_view(request):
+    return redirect("portal:customer_list")
+
+
+@login_required(login_url="portal:login")
+def customer_list_view(request):
+    query = (request.GET.get("q") or "").strip()
+    customers = Customer.objects.filter(is_active=True).order_by("name", "account_number")
+    if query:
+        customers = customers.filter(
+            name__icontains=query
+        ) | customers.filter(
+            account_number__icontains=query
+        ) | customers.filter(
+            billing_address1__icontains=query
+        ) | customers.filter(
+            billing_address2__icontains=query
+        )
+        customers = customers.order_by("name", "account_number")
+
     today = timezone.localdate()
-    candidates = Invoice.get_generation_candidates(as_of_date=today)
-    ready_count = sum(1 for candidate in candidates if candidate["status"] == "ready")
-    due_15_count = sum(
-        1 for candidate in candidates if candidate["status"] == "not_due" and 0 < (candidate["issue_date"] - today).days <= 15
-    )
-    due_30_count = sum(
-        1 for candidate in candidates if candidate["status"] == "not_due" and 15 < (candidate["issue_date"] - today).days <= 30
-    )
-    recent_payments = list(Payment.objects.select_related("customer").order_by("-payment_date", "-id")[:8])
-    latest_invoices = list(Invoice.objects.select_related("customer").exclude(status=Invoice.STATUS_VOID).order_by("-period_start", "-id")[:8])
-    total_open = sum((customer.open_balance_as_of(today) for customer in Customer.objects.filter(is_active=True)), Decimal("0.00"))
-    context = _portal_context(
+    rows = []
+    for customer in customers[:300]:
+        workflow = _customer_workflow_snapshot(customer, today)
+        last_payment = customer.payments.filter(is_voided=False).order_by("-payment_date", "-id").first()
+        rows.append(
+            {
+                "customer": customer,
+                "open_balance": customer.open_balance_as_of(today),
+                "workflow_status": workflow["status"],
+                "next_billing_period": workflow["period"] or "-",
+                "last_payment": last_payment,
+                "statement_url": f'{reverse("portal:customer_statement")}?customer={customer.pk}',
+                "saved_pdf_url": f'{reverse("portal:saved_invoice_list")}?account_number={customer.account_number}',
+                "quick_payment_url": f'{reverse("portal:quick_payment")}?customer={customer.pk}',
+            }
+        )
+
+    return render(
         request,
-        active_nav="dashboard",
-        title="ABS User Portal",
-        ready_count=ready_count,
-        due_15_count=due_15_count,
-        due_30_count=due_30_count,
-        recent_payments=recent_payments,
-        latest_invoices=latest_invoices,
-        total_open=total_open,
+        "portal/customers.html",
+        _portal_context(
+            request,
+            active_nav="customers",
+            title="Customers",
+            query=query,
+            rows=rows,
+        ),
     )
-    return render(request, "portal/dashboard.html", context)
 
 
 @login_required(login_url="portal:login")
@@ -529,6 +594,194 @@ def invoice_list_view(request):
         latest_only=latest_only,
     )
     return render(request, "portal/invoices.html", context)
+
+
+@login_required(login_url="portal:login")
+def saved_invoice_list_view(request):
+    query = (request.GET.get("q") or "").strip()
+    latest_only = request.GET.get("latest", "0") == "1"
+    account_number = (request.GET.get("account_number") or "").strip()
+    marker = request.GET.get("marker", "CURRENT")
+    marker = marker.strip().upper()
+    if marker not in {"", "CURRENT"}:
+        marker = "CURRENT"
+    printed_scope = (request.GET.get("printed_scope") or "unprinted").strip().lower()
+    if printed_scope not in {"unprinted", "all", "printed"}:
+        printed_scope = "unprinted"
+    batch_id = request.GET.get("batch_id", "").strip()
+    latest_unprinted_batch = InvoiceGenerationBatch.objects.filter(is_printed=False).order_by("-created_at", "-id").first()
+    if batch_id == "latest":
+        batch_id = ""
+        latest_batch = list_saved_invoice_pdf_records(limit=1)["latest_batch"]
+        if latest_batch:
+            batch_id = str(latest_batch.pk)
+    today = timezone.localdate()
+    date_from = _parse_iso_date(request.GET.get("date_from"), today - timedelta(days=30))
+    date_to = _parse_iso_date(request.GET.get("date_to"), today)
+    result = list_saved_invoice_pdf_records(
+        query=query,
+        account_number=account_number,
+        latest_only=latest_only,
+        limit=400,
+        date_from=date_from,
+        date_to=date_to,
+        marker=marker or None,
+        batch_id=int(batch_id) if batch_id.isdigit() else None,
+        printed_scope=printed_scope,
+    )
+    base_folder = result["base_folder"]
+    query_string = request.GET.copy()
+    if batch_id and "batch_id" not in query_string:
+        query_string["batch_id"] = batch_id
+    return render(
+        request,
+        "portal/saved_invoices.html",
+        _portal_context(
+            request,
+            active_nav="dispatch",
+            title="Invoice Dispatch",
+            page_subtitle=f"Server folder: {base_folder}" if base_folder else "Set the invoice PDF output folder first.",
+            records=result["records"],
+            query=query,
+            latest_only=latest_only,
+            account_number=account_number,
+            base_folder=base_folder,
+            date_from=date_from,
+            date_to=date_to,
+            marker=marker,
+            printed_scope=printed_scope,
+            batch_id=batch_id,
+            recent_batches=result["recent_batches"],
+            latest_batch=result["latest_batch"],
+            latest_unprinted_batch=latest_unprinted_batch,
+            merged_pdf_url=f'{reverse("portal:saved_invoice_merged_pdf")}?{query_string.urlencode()}',
+            merged_print_url=f'{reverse("portal:saved_invoice_merged_print")}?{query_string.urlencode()}',
+        ),
+    )
+
+
+@login_required(login_url="portal:login")
+def saved_invoice_file_view(request):
+    relative_path = (request.GET.get("path") or "").strip()
+    if not relative_path:
+        raise Http404("Saved invoice file not specified.")
+
+    base_folder = get_invoice_output_base_folder()
+    if not base_folder or not base_folder.exists():
+        raise Http404("Saved invoice folder is not configured.")
+
+    candidate = (base_folder / relative_path).resolve()
+    try:
+        candidate.relative_to(base_folder.resolve())
+    except ValueError:
+        raise Http404("Invalid saved invoice path.")
+
+    if not candidate.exists() or not candidate.is_file():
+        raise Http404("Saved invoice file not found.")
+
+    return FileResponse(candidate.open("rb"), content_type="application/pdf")
+
+
+def _saved_invoice_filtered_records(request, limit=0):
+    query = (request.GET.get("q") or "").strip()
+    latest_only = request.GET.get("latest", "0") == "1"
+    account_number = (request.GET.get("account_number") or "").strip()
+    marker = request.GET.get("marker", "CURRENT")
+    marker = marker.strip().upper()
+    if marker not in {"", "CURRENT"}:
+        marker = "CURRENT"
+    printed_scope = (request.GET.get("printed_scope") or "unprinted").strip().lower()
+    if printed_scope not in {"unprinted", "all", "printed"}:
+        printed_scope = "unprinted"
+    batch_id = request.GET.get("batch_id", "").strip()
+    if batch_id == "latest":
+        batch_id = ""
+        latest_batch = list_saved_invoice_pdf_records(limit=1)["latest_batch"]
+        if latest_batch:
+            batch_id = str(latest_batch.pk)
+    today = timezone.localdate()
+    date_from = _parse_iso_date(request.GET.get("date_from"), today - timedelta(days=30))
+    date_to = _parse_iso_date(request.GET.get("date_to"), today)
+    return list_saved_invoice_pdf_records(
+        query=query,
+        account_number=account_number,
+        latest_only=latest_only,
+        limit=limit,
+        date_from=date_from,
+        date_to=date_to,
+        marker=marker or None,
+        batch_id=int(batch_id) if batch_id.isdigit() else None,
+        printed_scope=printed_scope,
+    )["records"]
+
+
+def _saved_invoice_selected_batch(request):
+    batch_id = (request.GET.get("batch_id") or "").strip()
+    if batch_id == "latest":
+        return list_saved_invoice_pdf_records(limit=1)["latest_batch"]
+    if batch_id.isdigit():
+        return InvoiceGenerationBatch.objects.filter(pk=int(batch_id)).first()
+    return None
+
+
+def _mark_visible_batches_printed(records):
+    batch_ids = sorted({record["batch_id"] for record in records if record.get("batch_id")})
+    if not batch_ids:
+        return []
+    batches = list(InvoiceGenerationBatch.objects.filter(pk__in=batch_ids))
+    now = timezone.now()
+    updated = []
+    for batch in batches:
+        if batch.is_printed:
+            continue
+        batch.is_printed = True
+        batch.printed_at = now
+        batch.save(update_fields=["is_printed", "printed_at"])
+        updated.append(batch)
+    return updated
+
+
+@login_required(login_url="portal:login")
+def saved_invoice_merged_pdf_view(request):
+    records = _saved_invoice_filtered_records(request, limit=0)
+    pdf_bytes = merge_saved_invoice_pdf_records(records)
+    if not pdf_bytes:
+        messages.error(request, "No saved invoice PDFs matched the current filter.")
+        return redirect(f'{reverse("portal:saved_invoice_list")}?{request.GET.urlencode()}')
+    return _pdf_response(pdf_bytes, "saved-invoices-merged.pdf", as_attachment=True)
+
+
+@login_required(login_url="portal:login")
+def saved_invoice_merged_print_view(request):
+    records = _saved_invoice_filtered_records(request, limit=0)
+    pdf_bytes = merge_saved_invoice_pdf_records(records)
+    if not pdf_bytes:
+        messages.error(request, "No saved invoice PDFs matched the current filter.")
+        return redirect(f'{reverse("portal:saved_invoice_list")}?{request.GET.urlencode()}')
+    updated_batches = _mark_visible_batches_printed(records)
+    if len(updated_batches) == 1:
+        messages.success(request, f"{updated_batches[0].label} was marked as printed.")
+    elif updated_batches:
+        messages.success(request, f"{len(updated_batches)} batches were marked as printed.")
+    return _pdf_response(pdf_bytes, "saved-invoices-merged.pdf", as_attachment=False)
+
+
+@login_required(login_url="portal:login")
+def saved_invoice_batch_print_toggle_view(request):
+    batch_id = request.POST.get("batch_id")
+    if not batch_id or not batch_id.isdigit():
+        messages.error(request, "Choose a valid batch first.")
+        return redirect(f'{reverse("portal:saved_invoice_list")}?{request.GET.urlencode()}')
+    batch = get_object_or_404(InvoiceGenerationBatch, pk=int(batch_id))
+    batch.is_printed = not batch.is_printed
+    batch.printed_at = timezone.now() if batch.is_printed else None
+    batch.save(update_fields=["is_printed", "printed_at"])
+    if batch.is_printed:
+        messages.success(request, f"{batch.label} was marked as printed.")
+    else:
+        messages.info(request, f"{batch.label} printed status was cleared.")
+    query_string = request.POST.get("return_query", "")
+    return redirect(f'{reverse("portal:saved_invoice_list")}?{query_string}' if query_string else reverse("portal:saved_invoice_list"))
 
 
 @login_required(login_url="portal:login")

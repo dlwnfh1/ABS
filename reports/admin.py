@@ -1,7 +1,7 @@
 import csv
 import hashlib
 from calendar import monthrange
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from io import BytesIO
 
@@ -15,9 +15,10 @@ from django.utils import timezone
 from xhtml2pdf import pisa
 
 from billing.models import Invoice, add_months
+from billing.pdf_utils import list_saved_invoice_pdf_records, merge_saved_invoice_pdf_records
 from payments.models import Payment
 
-from .models import ReportCenter, SystemSetting
+from .models import DispatchCenter, InvoiceGenerationBatch, ReportCenter, SystemSetting
 
 
 
@@ -70,6 +71,10 @@ class ReportCenterAdmin(admin.ModelAdmin):
             path("customer-statement/", self.admin_site.admin_view(self.customer_statement_view), name="reports_reportcenter_customer_statement"),
             path("customer-statement/pdf/", self.admin_site.admin_view(self.customer_statement_pdf_view), name="reports_reportcenter_customer_statement_pdf"),
             path("customer-statement/print/", self.admin_site.admin_view(self.customer_statement_print_view), name="reports_reportcenter_customer_statement_print"),
+            path("saved-invoices/", self.admin_site.admin_view(self.saved_invoices_view), name="reports_reportcenter_saved_invoices"),
+            path("saved-invoices/merged/pdf/", self.admin_site.admin_view(self.saved_invoices_merged_pdf_view), name="reports_reportcenter_saved_invoices_merged_pdf"),
+            path("saved-invoices/merged/print/", self.admin_site.admin_view(self.saved_invoices_merged_print_view), name="reports_reportcenter_saved_invoices_merged_print"),
+            path("saved-invoices/batch/toggle-printed/", self.admin_site.admin_view(self.saved_invoices_batch_toggle_printed_view), name="reports_reportcenter_saved_invoices_batch_toggle_printed"),
         ]
         return custom_urls + urls
 
@@ -110,6 +115,15 @@ class ReportCenterAdmin(admin.ModelAdmin):
             }
         )
         return TemplateResponse(request, "admin/reports/reportcenter/change_list.html", extra_context)
+
+    @staticmethod
+    def _parse_optional_iso_date(value, fallback):
+        if not value:
+            return fallback
+        try:
+            return datetime.strptime(value, "%Y-%m-%d").date()
+        except ValueError:
+            return fallback
 
     @staticmethod
     def _ensure_md5_compat():
@@ -662,3 +676,196 @@ class ReportCenterAdmin(admin.ModelAdmin):
         if response is None:
             return redirect(f'{reverse("admin:reports_reportcenter_customer_statement")}?customer={selected_customer.pk}')
         return response
+
+    def saved_invoices_view(self, request):
+        today = timezone.localdate()
+        query = (request.GET.get("q") or "").strip()
+        latest_only = request.GET.get("latest", "0") == "1"
+        account_number = (request.GET.get("account_number") or "").strip()
+        marker = request.GET.get("marker", "CURRENT")
+        marker = marker.strip().upper()
+        if marker not in {"", "CURRENT"}:
+            marker = "CURRENT"
+        printed_scope = (request.GET.get("printed_scope") or "unprinted").strip().lower()
+        if printed_scope not in {"unprinted", "all", "printed"}:
+            printed_scope = "unprinted"
+        batch_id = request.GET.get("batch_id", "").strip()
+        latest_unprinted_batch = InvoiceGenerationBatch.objects.filter(is_printed=False).order_by("-created_at", "-id").first()
+        if batch_id == "latest":
+            batch_id = ""
+            latest_batch = list_saved_invoice_pdf_records(limit=1)["latest_batch"]
+            if latest_batch:
+                batch_id = str(latest_batch.pk)
+        date_from = self._parse_optional_iso_date(request.GET.get("date_from"), today - timedelta(days=30))
+        date_to = self._parse_optional_iso_date(request.GET.get("date_to"), today)
+        result = list_saved_invoice_pdf_records(
+            query=query,
+            account_number=account_number,
+            latest_only=latest_only,
+            limit=500,
+            date_from=date_from,
+            date_to=date_to,
+            marker=marker or None,
+            batch_id=int(batch_id) if batch_id.isdigit() else None,
+            printed_scope=printed_scope,
+        )
+        query_string = request.GET.copy()
+        if batch_id and "batch_id" not in query_string:
+            query_string["batch_id"] = batch_id
+        context = {
+            **self.admin_site.each_context(request),
+            "opts": self.model._meta,
+            "title": "Saved Invoice PDFs",
+            "records": result["records"],
+            "base_folder": result["base_folder"],
+            "query": query,
+            "latest_only": latest_only,
+            "account_number": account_number,
+            "date_from": date_from,
+            "date_to": date_to,
+            "marker": marker,
+            "printed_scope": printed_scope,
+            "batch_id": batch_id,
+            "recent_batches": result["recent_batches"],
+            "latest_batch": result["latest_batch"],
+            "latest_unprinted_batch": latest_unprinted_batch,
+            "reports_home_url": reverse("admin:reports_reportcenter_changelist"),
+            "merged_pdf_url": f'{reverse("admin:reports_reportcenter_saved_invoices_merged_pdf")}?{query_string.urlencode()}',
+            "merged_print_url": f'{reverse("admin:reports_reportcenter_saved_invoices_merged_print")}?{query_string.urlencode()}',
+        }
+        return TemplateResponse(request, "admin/reports/reportcenter/saved_invoices.html", context)
+
+    def _saved_invoice_filtered_records(self, request):
+        today = timezone.localdate()
+        query = (request.GET.get("q") or "").strip()
+        latest_only = request.GET.get("latest", "0") == "1"
+        account_number = (request.GET.get("account_number") or "").strip()
+        marker = request.GET.get("marker", "CURRENT")
+        marker = marker.strip().upper()
+        if marker not in {"", "CURRENT"}:
+            marker = "CURRENT"
+        printed_scope = (request.GET.get("printed_scope") or "unprinted").strip().lower()
+        if printed_scope not in {"unprinted", "all", "printed"}:
+            printed_scope = "unprinted"
+        batch_id = request.GET.get("batch_id", "").strip()
+        if batch_id == "latest":
+            batch_id = ""
+            latest_batch = list_saved_invoice_pdf_records(limit=1)["latest_batch"]
+            if latest_batch:
+                batch_id = str(latest_batch.pk)
+        date_from = self._parse_optional_iso_date(request.GET.get("date_from"), today - timedelta(days=30))
+        date_to = self._parse_optional_iso_date(request.GET.get("date_to"), today)
+        return list_saved_invoice_pdf_records(
+            query=query,
+            account_number=account_number,
+            latest_only=latest_only,
+            limit=0,
+            date_from=date_from,
+            date_to=date_to,
+            marker=marker or None,
+            batch_id=int(batch_id) if batch_id.isdigit() else None,
+            printed_scope=printed_scope,
+        )["records"]
+
+    def _saved_invoice_selected_batch(self, request):
+        batch_id = (request.GET.get("batch_id") or "").strip()
+        if batch_id == "latest":
+            return list_saved_invoice_pdf_records(limit=1)["latest_batch"]
+        if batch_id.isdigit():
+            return InvoiceGenerationBatch.objects.filter(pk=int(batch_id)).first()
+        return None
+
+    def _mark_visible_batches_printed(self, records):
+        batch_ids = sorted({record["batch_id"] for record in records if record.get("batch_id")})
+        if not batch_ids:
+            return []
+        batches = list(InvoiceGenerationBatch.objects.filter(pk__in=batch_ids))
+        now = timezone.now()
+        updated = []
+        for batch in batches:
+            if batch.is_printed:
+                continue
+            batch.is_printed = True
+            batch.printed_at = now
+            batch.save(update_fields=["is_printed", "printed_at"])
+            updated.append(batch)
+        return updated
+
+    def saved_invoices_merged_pdf_view(self, request):
+        records = self._saved_invoice_filtered_records(request)
+        pdf_bytes = merge_saved_invoice_pdf_records(records)
+        if not pdf_bytes:
+            self.message_user(request, "No saved invoice PDFs matched the current filter.", level=40)
+            return redirect(f'{reverse("admin:reports_reportcenter_saved_invoices")}?{request.GET.urlencode()}')
+        response = HttpResponse(pdf_bytes, content_type="application/pdf")
+        response["Content-Disposition"] = 'attachment; filename="saved-invoices-merged.pdf"'
+        return response
+
+    def saved_invoices_merged_print_view(self, request):
+        records = self._saved_invoice_filtered_records(request)
+        pdf_bytes = merge_saved_invoice_pdf_records(records)
+        if not pdf_bytes:
+            self.message_user(request, "No saved invoice PDFs matched the current filter.", level=40)
+            return redirect(f'{reverse("admin:reports_reportcenter_saved_invoices")}?{request.GET.urlencode()}')
+        updated_batches = self._mark_visible_batches_printed(records)
+        if len(updated_batches) == 1:
+            self.message_user(request, f"{updated_batches[0].label} was marked as printed.")
+        elif updated_batches:
+            self.message_user(request, f"{len(updated_batches)} batches were marked as printed.")
+        response = HttpResponse(pdf_bytes, content_type="application/pdf")
+        response["Content-Disposition"] = 'inline; filename="saved-invoices-merged.pdf"'
+        return response
+
+    def saved_invoices_batch_toggle_printed_view(self, request):
+        batch_id = request.POST.get("batch_id")
+        query_string = request.POST.get("return_query", "")
+        if not batch_id or not batch_id.isdigit():
+            self.message_user(request, "Choose a valid batch first.", level=40)
+            return redirect(f'{reverse("admin:reports_reportcenter_saved_invoices")}?{query_string}' if query_string else reverse("admin:reports_reportcenter_saved_invoices"))
+        batch = InvoiceGenerationBatch.objects.filter(pk=int(batch_id)).first()
+        if not batch:
+            self.message_user(request, "Batch not found.", level=40)
+            return redirect(f'{reverse("admin:reports_reportcenter_saved_invoices")}?{query_string}' if query_string else reverse("admin:reports_reportcenter_saved_invoices"))
+        batch.is_printed = not batch.is_printed
+        batch.printed_at = timezone.now() if batch.is_printed else None
+        batch.save(update_fields=["is_printed", "printed_at"])
+        if batch.is_printed:
+            self.message_user(request, f"{batch.label} was marked as printed.")
+        else:
+            self.message_user(request, f"{batch.label} printed status was cleared.")
+        return redirect(f'{reverse("admin:reports_reportcenter_saved_invoices")}?{query_string}' if query_string else reverse("admin:reports_reportcenter_saved_invoices"))
+
+
+@admin.register(DispatchCenter)
+class DispatchCenterAdmin(admin.ModelAdmin):
+    change_list_template = "admin/reports/dispatchcenter/change_list.html"
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def get_queryset(self, request):
+        return DispatchCenter.objects.none()
+
+    def changelist_view(self, request, extra_context=None):
+        extra_context = extra_context or {}
+        extra_context.update(
+            {
+                **self.admin_site.each_context(request),
+                "opts": self.model._meta,
+                "title": "Invoice Dispatch",
+                "dispatch_links": [
+                    {
+                        "title": "Invoice Dispatch",
+                        "description": "Open saved invoice files, filter unprinted batches, and print visible invoices as one PDF.",
+                        "url": reverse("admin:reports_reportcenter_saved_invoices"),
+                    },
+                ],
+            }
+        )
+        return TemplateResponse(request, "admin/reports/dispatchcenter/change_list.html", extra_context)

@@ -13,13 +13,26 @@
                 <option value="0" {% if not latest_only %}selected{% endif %}>Recent invoice list</option>
             </select>
         </div>
-        <div class="full btn-row"><button class="btn-primary" type="submit">Apply</button></div>
+        <div class="full btn-row">
+            <button class="btn-primary" type="submit">Apply</button>
+            <a class="btn btn-secondary" href="{% url 'portal:saved_invoice_list' %}">Open Saved PDF Folder View</a>
+        </div>
     </form>
 </div>
 <div class="card" style="margin-top:18px;">
     <div class="table-wrap">
         <table>
-            <thead><tr><th>Invoice #</th><th>Customer</th><th>Billing Period</th><th>Issue Date</th><th>Due Date</th><th>Total Due</th><th>Actions</th></tr></thead>
+            <thead>
+                <tr>
+                    <th>Invoice #</th>
+                    <th>Customer</th>
+                    <th>Billing Period</th>
+                    <th>Issue Date</th>
+                    <th>Due Date</th>
+                    <th>Total Due</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
             <tbody>
             {% for invoice in invoices %}
                 <tr>
@@ -29,7 +42,7 @@
                     <td>{{ invoice.issue_date|date:"m/d/Y" }}</td>
                     <td>{{ invoice.due_date|date:"m/d/Y" }}</td>
                     <td>${{ invoice.total_due }}</td>
-                    <td><a href="{% url 'portal:invoice_print' invoice.pk %}" target="_blank">Print</a> · <a href="{% url 'portal:invoice_pdf' invoice.pk %}">PDF</a></td>
+                    <td><a href="{% url 'portal:invoice_print' invoice.pk %}" target="_blank">Print</a> / <a href="{% url 'portal:invoice_pdf' invoice.pk %}">PDF</a></td>
                 </tr>
             {% empty %}
                 <tr><td colspan="7">No invoices found.</td></tr>

@@ -1,4 +1,4 @@
-{% extends "admin/change_form.html" %}
+﻿{% extends "admin/change_form.html" %}
 
 {% block extrahead %}
 {{ block.super }}
@@ -227,6 +227,8 @@
     <a href="{{ view_payments_url }}">View Payments</a>
 </li>
 <li>
+</li>
+<li>
     <a href="{{ generate_all_due_url }}"><strong>Generate All Due</strong></a>
 </li>
 <li>
@@ -254,3 +256,6 @@
 {% endif %}
 {{ block.super }}
 {% endblock %}
+
+
+

@@ -578,11 +578,11 @@ class InvoiceAdmin(admin.ModelAdmin):
             save_result = None
             if created_invoice_ids:
                 created_invoices = list(Invoice.objects.filter(pk__in=created_invoice_ids).select_related("customer"))
-                save_result = save_invoices_to_configured_folder(created_invoices)
+                save_result = save_invoices_to_configured_folder(created_invoices, created_by=request.user.get_username())
             if created:
                 self.message_user(request, f"Generated {created} invoice(s).", level=messages.SUCCESS)
             if save_result and save_result.get("saved_count"):
-                self.message_user(request, f'Saved {save_result["saved_count"]} invoice PDF(s) to {save_result["date_folder"]}.', level=messages.SUCCESS)
+                self.message_user(request, f'Saved {save_result["saved_count"]} invoice PDF(s) to {save_result["date_folder"]}. Batch: {save_result["batch_label"]}.', level=messages.SUCCESS)
             for message in skipped_messages:
                 self.message_user(request, message, level=messages.WARNING)
             if created_invoice_ids:
