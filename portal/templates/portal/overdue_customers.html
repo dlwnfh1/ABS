@@ -6,9 +6,59 @@
     <div class="card"><div class="stat-label">Overdue Total</div><div class="stat-value">${{ totals.overdue_total }}</div></div>
     <div class="card"><div class="stat-label">Highest Terms Past Due</div><div class="stat-value">{{ totals.max_terms_overdue }}</div></div>
 </div>
+
 <div class="card" style="margin-top:18px;">
-    <div class="table-wrap"><table><thead><tr><th>Customer</th><th>Account #</th><th>Invoices</th><th>Oldest Due</th><th>Max Terms</th><th>Overdue Total</th><th>Open Balance</th></tr></thead><tbody>
-    {% for row in rows %}<tr><td>{{ row.customer.name }}</td><td>{{ row.customer.account_number }}</td><td>{{ row.invoice_count }}</td><td>{{ row.oldest_due_date|date:"m/d/Y" }}</td><td>{{ row.max_terms_overdue }}</td><td>${{ row.overdue_total }}</td><td>${{ row.open_total }}</td></tr>{% empty %}<tr><td colspan="7">No overdue customers.</td></tr>{% endfor %}
-    </tbody></table></div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Customer</th>
+                    <th>Account #</th>
+                    <th>Invoices</th>
+                    <th>Oldest Due</th>
+                    <th>Max Terms</th>
+                    <th>Overdue Total</th>
+                    <th>Open Balance</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for row in rows %}
+                <tr>
+                    <td>{{ row.customer.name }}</td>
+                    <td>{{ row.customer.account_number }}</td>
+                    <td>{{ row.invoice_count }}</td>
+                    <td>{{ row.oldest_due_date|date:"m/d/Y" }}</td>
+                    <td>{{ row.max_terms_overdue }}</td>
+                    <td>${{ row.overdue_total }}</td>
+                    <td>${{ row.open_total }}</td>
+                </tr>
+            {% empty %}
+                <tr><td colspan="7">No overdue customers.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if page_obj and page_obj.paginator.num_pages > 1 %}
+    <div class="pagination">
+        <div class="page-info">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</div>
+        <div class="page-links">
+            {% if page_obj.has_previous %}
+                <a class="btn btn-secondary" href="?{% if page_query %}{{ page_query }}&{% endif %}page={{ page_obj.previous_page_number }}">Previous</a>
+            {% endif %}
+            {% for num in page_numbers %}
+                {% if num == page_obj.paginator.ELLIPSIS %}
+                    <span class="page-ellipsis">…</span>
+                {% elif page_obj.number == num %}
+                    <span class="page-link active">{{ num }}</span>
+                {% else %}
+                    <a class="page-link" href="?{% if page_query %}{{ page_query }}&{% endif %}page={{ num }}">{{ num }}</a>
+                {% endif %}
+            {% endfor %}
+            {% if page_obj.has_next %}
+                <a class="btn btn-secondary" href="?{% if page_query %}{{ page_query }}&{% endif %}page={{ page_obj.next_page_number }}">Next</a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
 </div>
 {% endblock %}

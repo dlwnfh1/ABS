@@ -1,7 +1,7 @@
 import base64
 import hashlib
 import re
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 from io import BytesIO
 from pathlib import Path
 
@@ -10,6 +10,7 @@ from django.utils.text import slugify
 from pypdf import PdfWriter
 from xhtml2pdf import pisa
 
+from customers.models import Customer
 from reports.models import InvoiceGenerationBatch, SavedInvoicePDF, SystemSetting
 
 from .models import Invoice
@@ -163,7 +164,80 @@ def parse_saved_invoice_pdf_record(path, base_folder=None):
     }
 
 
+def sync_saved_invoice_pdf_records_from_disk():
+    base_folder = get_invoice_output_base_folder()
+    if not base_folder or not base_folder.exists():
+        return 0
+
+    existing_paths = set(SavedInvoicePDF.objects.values_list("absolute_path", flat=True))
+    imported_count = 0
+    imported_batches = {}
+
+    for path in sorted(base_folder.rglob("*.pdf")):
+        if str(path) in existing_paths:
+            continue
+        parsed = parse_saved_invoice_pdf_record(path, base_folder=base_folder)
+        if not parsed:
+            continue
+
+        generated_date = datetime.strptime(parsed["generated_date"], "%Y-%m-%d").date()
+        batch = imported_batches.get(generated_date)
+        if batch is None:
+            batch = (
+                InvoiceGenerationBatch.objects.filter(
+                    created_by="Imported from saved folder",
+                    created_at__date=generated_date,
+                )
+                .order_by("id")
+                .first()
+            )
+            if batch is None:
+                batch = InvoiceGenerationBatch.objects.create(
+                    created_by="Imported from saved folder",
+                    saved_count=0,
+                    customer_count=0,
+                )
+                batch.created_at = timezone.make_aware(datetime.combine(generated_date, time(12, 0)))
+                batch.save(update_fields=["created_at"])
+            imported_batches[generated_date] = batch
+
+        invoice = Invoice.objects.filter(invoice_number=parsed["invoice_number"]).select_related("customer").first()
+        customer = None
+        customer_name = parsed["customer_label"]
+        account_number = parsed["account_number"]
+        if invoice:
+            customer = invoice.customer
+            customer_name = customer.name
+            account_number = customer.account_number
+        else:
+            customer = Customer.objects.filter(account_number=account_number).first()
+            if customer:
+                customer_name = customer.name
+
+        SavedInvoicePDF.objects.create(
+            batch=batch,
+            invoice=invoice,
+            customer=customer,
+            generated_date=generated_date,
+            account_number=account_number,
+            customer_name=customer_name,
+            invoice_number=parsed["invoice_number"],
+            marker=parsed["marker"],
+            relative_path=parsed["relative_path"],
+            absolute_path=str(path),
+        )
+        imported_count += 1
+
+    for batch in imported_batches.values():
+        batch.saved_count = batch.saved_invoices.count()
+        batch.customer_count = batch.saved_invoices.values("account_number").distinct().count()
+        batch.save(update_fields=["saved_count", "customer_count"])
+
+    return imported_count
+
+
 def list_saved_invoice_pdf_records(query="", account_number=None, latest_only=False, limit=300, date_from=None, date_to=None, marker=None, batch_id=None, printed_scope=None):
+    sync_saved_invoice_pdf_records_from_disk()
     base_folder = get_invoice_output_base_folder()
     records_qs = SavedInvoicePDF.objects.select_related("batch", "customer", "invoice").all()
 

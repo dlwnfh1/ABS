@@ -1,0 +1,113 @@
+{% extends "portal/base.html" %}
+{% block content %}
+<div class="card">
+    <form method="post" class="form-grid">
+        {% csrf_token %}
+        {% if form.errors %}
+        <div class="full">
+            <div class="message error">
+                {{ form.errors }}
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="full"><h3 style="margin:0 0 8px 0;">{{ section_heading|default:"Customer Information" }}</h3></div>
+        <div>
+            <label>Name</label>
+            {{ form.name }}
+        </div>
+        <div>
+            <label>Account number</label>
+            {{ form.account_number }}
+        </div>
+        <div>
+            <label>Billing address 1</label>
+            {{ form.billing_address1 }}
+        </div>
+        <div>
+            <label>Billing address 2</label>
+            {{ form.billing_address2 }}
+        </div>
+        <div>
+            <label>Email</label>
+            {{ form.email_address }}
+        </div>
+        <div>
+            <label>Billing term</label>
+            {{ form.billing_term }}
+        </div>
+        <div>
+            <label>Tax rate</label>
+            {{ form.tax_rate }}
+        </div>
+        <div>
+            <label>First billing date</label>
+            {{ form.first_billing_date }}
+        </div>
+        <div class="full">
+            <label>{{ form.is_active }} Active customer</label>
+        </div>
+
+        <div class="full" style="margin-top:8px;"><h3 style="margin:0 0 8px 0;">{{ service_heading|default:"First Service" }}</h3></div>
+        <div>
+            <label>Service name</label>
+            {{ form.service_name }}
+        </div>
+        <div>
+            <label>Billing amount</label>
+            {{ form.billing_amount }}
+        </div>
+        <div>
+            <label>Service address 1</label>
+            {{ form.service_address1 }}
+        </div>
+        <div>
+            <label>Service address 2</label>
+            {{ form.service_address2 }}
+        </div>
+        <div class="full">
+            <label>{{ form.service_is_active }} Active service</label>
+        </div>
+
+        <div class="full btn-row">
+            <button class="btn-primary" type="submit">{{ submit_label|default:"Create Customer" }}</button>
+            {% if back_url %}
+                <a class="btn btn-secondary" href="{{ back_url }}">Back to History</a>
+            {% else %}
+                <a class="btn btn-secondary" href="{% url 'portal:customer_list' %}">Back to Customers</a>
+            {% endif %}
+        </div>
+    </form>
+</div>
+
+<script>
+(() => {
+    const billing1 = document.getElementById('id_billing_address1');
+    const billing2 = document.getElementById('id_billing_address2');
+    const service1 = document.getElementById('id_service_address1');
+    const service2 = document.getElementById('id_service_address2');
+
+    const syncIfBlank = (source, target) => {
+        if (!source || !target) return;
+        if (!target.value.trim()) {
+            target.value = source.value;
+        }
+        source.addEventListener('input', () => {
+            if (!target.dataset.edited || target.dataset.edited !== '1') {
+                target.value = source.value;
+            }
+        });
+        target.addEventListener('input', () => {
+            if (target.value.trim()) {
+                target.dataset.edited = '1';
+            } else {
+                target.dataset.edited = '';
+            }
+        });
+    };
+
+    syncIfBlank(billing1, service1);
+    syncIfBlank(billing2, service2);
+})();
+</script>
+{% endblock %}

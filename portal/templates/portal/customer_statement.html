@@ -6,19 +6,99 @@
             <label>Customer</label>
             <select name="customer">
                 <option value="">Select a customer</option>
-                {% for customer in customers %}<option value="{{ customer.pk }}" {% if selected_customer_id == customer.pk %}selected{% endif %}>{{ customer.name }} ({{ customer.account_number }})</option>{% endfor %}
+                {% for customer in customers %}
+                    <option value="{{ customer.pk }}" {% if selected_customer_id == customer.pk %}selected{% endif %}>
+                        {{ customer.name }} ({{ customer.account_number }})
+                    </option>
+                {% endfor %}
             </select>
         </div>
-        <div class="full btn-row"><button class="btn-primary" type="submit">View Statement</button></div>
+        <div class="full btn-row">
+            <button class="btn-primary" type="submit">View Statement</button>
+        </div>
     </form>
 </div>
+
 {% if selected_customer %}
 <div class="grid cards-4" style="margin-top:18px;">
-    <div class="card"><div class="stat-label">Customer</div><div class="stat-value" style="font-size:1.3rem;">{{ selected_customer.name }}</div></div>
-    <div class="card"><div class="stat-label">Account #</div><div class="stat-value" style="font-size:1.3rem;">{{ selected_customer.account_number }}</div></div>
-    <div class="card"><div class="stat-label">Open Balance</div><div class="stat-value" style="font-size:1.3rem;">${{ open_balance }}</div></div>
-    <div class="card"><div class="stat-label">Last Payment</div><div class="stat-value" style="font-size:1.3rem;">{% if last_payment %}${{ last_payment.amount }} on {{ last_payment.payment_date|date:"m/d/Y" }}{% else %}-{% endif %}</div></div>
+    <div class="card">
+        <div class="stat-label">Customer</div>
+        <div class="stat-value" style="font-size:1.3rem;">{{ selected_customer.name }}</div>
+    </div>
+    <div class="card">
+        <div class="stat-label">Account #</div>
+        <div class="stat-value" style="font-size:1.3rem;">{{ selected_customer.account_number }}</div>
+    </div>
+    <div class="card">
+        <div class="stat-label">Open Balance</div>
+        <div class="stat-value" style="font-size:1.3rem;">${{ open_balance }}</div>
+    </div>
+    <div class="card">
+        <div class="stat-label">Last Payment</div>
+        <div class="stat-value" style="font-size:1.3rem;">
+            {% if last_payment %}
+                ${{ last_payment.amount }} on {{ last_payment.payment_date|date:"m/d/Y" }}
+            {% else %}
+                -
+            {% endif %}
+        </div>
+    </div>
 </div>
+
+<div class="card" style="margin-top:18px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
+        <h3 style="margin:0;">Customer Information</h3>
+        <a class="btn btn-secondary" href="{% url 'portal:customer_edit' selected_customer.pk %}">Edit Customer</a>
+    </div>
+    <div class="grid cards-4">
+        <div>
+            <div class="stat-label">Billing Address</div>
+            <div>
+                {{ selected_customer.billing_address1|default:"-" }}{% if selected_customer.billing_address2 %}<br>{{ selected_customer.billing_address2 }}{% endif %}
+            </div>
+        </div>
+        <div>
+            <div class="stat-label">Email</div>
+            <div>{{ selected_customer.email_address|default:"-" }}</div>
+        </div>
+        <div>
+            <div class="stat-label">Billing Term</div>
+            <div>{{ selected_customer.get_billing_term_display }}</div>
+        </div>
+        <div>
+            <div class="stat-label">First Billing Date</div>
+            <div>{% if selected_customer.first_billing_date %}{{ selected_customer.first_billing_date|date:"m/d/Y" }}{% else %}-{% endif %}</div>
+        </div>
+        <div>
+            <div class="stat-label">Tax Rate</div>
+            <div>{{ selected_customer.tax_rate }}%</div>
+        </div>
+        <div>
+            <div class="stat-label">Customer Status</div>
+            <div>{% if selected_customer.is_active %}Active{% else %}Inactive{% endif %}</div>
+        </div>
+        <div>
+            <div class="stat-label">Service</div>
+            <div>{% if primary_service %}{{ primary_service.service_name }}{% else %}-{% endif %}</div>
+        </div>
+        <div>
+            <div class="stat-label">Current Service Amount</div>
+            <div>{% if primary_service %}${{ primary_service.billing_amount }}{% else %}-{% endif %}</div>
+        </div>
+        <div class="full">
+            <div class="stat-label">Service Address</div>
+            <div>
+                {% if primary_service %}
+                    {{ primary_service.service_address1|default:selected_customer.billing_address1|default:"-" }}
+                    {% if primary_service.service_address2 %}<br>{{ primary_service.service_address2 }}{% elif selected_customer.billing_address2 %}<br>{{ selected_customer.billing_address2 }}{% endif %}
+                {% else %}
+                    {{ selected_customer.billing_address1|default:"-" }}{% if selected_customer.billing_address2 %}<br>{{ selected_customer.billing_address2 }}{% endif %}
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="row" style="margin-top:18px;">
     <div class="card">
         <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
@@ -29,11 +109,43 @@
                 </a>
             {% endif %}
         </div>
-        <div class="table-wrap"><table><thead><tr><th>Invoice #</th><th>Period</th><th>Total Due</th><th>Status</th></tr></thead><tbody>{% for invoice in invoices %}<tr><td class="mono">{{ invoice.invoice_number }}</td><td>{{ invoice.period_start|date:"m/d/Y" }} - {{ invoice.period_end|date:"m/d/Y" }}</td><td>${{ invoice.total_due }}</td><td>{{ invoice.get_status_display }}</td></tr>{% empty %}<tr><td colspan="4">No invoices.</td></tr>{% endfor %}</tbody></table></div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Invoice #</th>
+                        <th>Period</th>
+                        <th>Total Due</th>
+                        <th>Status</th>
+                        <th>PDF</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for invoice in invoices %}
+                    <tr>
+                        <td class="mono">{{ invoice.invoice_number }}</td>
+                        <td>{{ invoice.period_start|date:"m/d/Y" }} - {{ invoice.period_end|date:"m/d/Y" }}</td>
+                        <td>${{ invoice.total_due }}</td>
+                        <td>{{ invoice.get_status_display }}</td>
+                        <td>
+                            {% if invoice.saved_pdf_url %}
+                                <a href="{{ invoice.saved_pdf_url }}" target="_blank">View Saved PDF</a>
+                            {% else %}
+                                <a href="{{ invoice.generated_pdf_url }}" target="_blank">View PDF</a>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr><td colspan="5">No invoices.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
         {% if invoice_count > 25 and not show_all_invoices %}
-            <p class="page-sub" style="margin-top:12px;">최근 25개 인보이스만 표시 중입니다.</p>
+            <p class="page-sub" style="margin-top:12px;">Showing the most recent 25 invoices.</p>
         {% endif %}
     </div>
+
     <div class="card">
         <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
             <h3 style="margin:0;">Payments</h3>
@@ -43,9 +155,38 @@
                 </a>
             {% endif %}
         </div>
-        <div class="table-wrap"><table><thead><tr><th>Date</th><th>Amount</th><th>Method</th><th>Applied Invoices</th></tr></thead><tbody>{% for payment in payments %}<tr><td>{{ payment.payment_date|date:"m/d/Y" }}</td><td>${{ payment.amount }}</td><td>{{ payment.get_method_display }}</td><td>{% for allocation in payment.allocations.all %}<div class="mono">{{ allocation.invoice.invoice_number }} (${{ allocation.amount }})</div>{% empty %}-{% endfor %}</td></tr>{% empty %}<tr><td colspan="4">No payments.</td></tr>{% endfor %}</tbody></table></div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Amount</th>
+                        <th>Method</th>
+                        <th>Applied Invoices</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for payment in payments %}
+                    <tr>
+                        <td>{{ payment.payment_date|date:"m/d/Y" }}</td>
+                        <td>${{ payment.amount }}</td>
+                        <td>{{ payment.get_method_display }}</td>
+                        <td>
+                            {% for allocation in payment.allocations.all %}
+                                <div class="mono">{{ allocation.invoice.invoice_number }} (${{ allocation.amount }})</div>
+                            {% empty %}
+                                -
+                            {% endfor %}
+                        </td>
+                    </tr>
+                {% empty %}
+                    <tr><td colspan="4">No payments.</td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
         {% if payment_count > 25 and not show_all_payments %}
-            <p class="page-sub" style="margin-top:12px;">최근 25개 결제만 표시 중입니다.</p>
+            <p class="page-sub" style="margin-top:12px;">Showing the most recent 25 payments.</p>
         {% endif %}
     </div>
 </div>

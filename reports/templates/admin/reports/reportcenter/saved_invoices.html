@@ -78,67 +78,47 @@
     .mono {
         font-family: Consolas, monospace;
     }
+
+    .dispatch-table .batch-shade-1 td { background: #f7fbff; }
+    .dispatch-table .batch-shade-2 td { background: #fdfaf3; }
+    .dispatch-table .batch-start td { border-top: 2px solid #cbd5e1; }
+    .dispatch-mini-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 28px;
+        padding: 0 10px;
+        border-radius: 999px;
+        border: 1px solid #cbd5e1;
+        background: #eef4ff;
+        color: #16324f;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+    }
 </style>
 {% endblock %}
 
 {% block content %}
 <div id="content-main">
-    <h1>Saved Invoice PDFs</h1>
+    <h1>Invoice Dispatch</h1>
 
     <div class="filter-card">
         <form method="get">
-            {% if account_number %}
-                <input type="hidden" name="account_number" value="{{ account_number }}">
-            {% endif %}
             <div class="filter-grid">
                 <div>
-                    <label>Search</label>
-                    <input type="text" name="q" value="{{ query }}" placeholder="Customer, account #, invoice #, or date">
-                </div>
-                <div>
-                    <label>Show</label>
-                    <select name="latest">
-                        <option value="0" {% if not latest_only %}selected{% endif %}>All saved PDFs</option>
-                        <option value="1" {% if latest_only %}selected{% endif %}>Latest saved PDF per customer</option>
-                    </select>
-                </div>
-                <div>
-                    <label>Type</label>
-                    <select name="marker">
-                        <option value="CURRENT" {% if marker == "CURRENT" %}selected{% endif %}>CURRENT only</option>
-                        <option value="" {% if not marker %}selected{% endif %}>All types</option>
-                    </select>
-                </div>
-                <div>
-                    <label>Printed status</label>
+                    <label>Dispatch queue</label>
                     <select name="printed_scope">
                         <option value="unprinted" {% if printed_scope == "unprinted" %}selected{% endif %}>Unprinted batches</option>
                         <option value="all" {% if printed_scope == "all" %}selected{% endif %}>All batches</option>
                         <option value="printed" {% if printed_scope == "printed" %}selected{% endif %}>Printed batches only</option>
                     </select>
                 </div>
-                <div>
-                    <label>Batch</label>
-                    <select name="batch_id">
-                        <option value="" {% if not batch_id %}selected{% endif %}>All batches</option>
-                        {% for batch in recent_batches %}
-                        <option value="{{ batch.pk }}" {% if batch_id == batch.pk|stringformat:"s" %}selected{% endif %}>{{ batch.label }}{% if batch.created_by %} / {{ batch.created_by }}{% endif %}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div>
-                    <label>Date from</label>
-                    <input type="date" name="date_from" value="{{ date_from|date:'Y-m-d' }}">
-                </div>
-                <div>
-                    <label>Date to</label>
-                    <input type="date" name="date_to" value="{{ date_to|date:'Y-m-d' }}">
-                </div>
             </div>
             <div class="btn-row">
                 <button class="btn-primary" type="submit">Apply</button>
-                <a class="btn-secondary" href="{{ reports_home_url }}">Back to Reports</a>
-                <a class="btn-secondary" href="{% url 'admin:reports_reportcenter_saved_invoices' %}?printed_scope=unprinted&marker=CURRENT">All Unprinted Batches</a>
+                <a class="btn-secondary" href="{{ dispatch_home_url }}">Back to Invoice Dispatch</a>
+                <a class="btn-secondary" href="{% url 'admin:reports_reportcenter_saved_invoices' %}?printed_scope=unprinted">Reset to Unprinted</a>
             </div>
         </form>
     </div>
@@ -149,37 +129,6 @@
         {% else %}
             <p>Set the invoice PDF output folder in System Setting first.</p>
         {% endif %}
-        {% if account_number and records %}
-            <p>Viewing customer: <strong>{{ records.0.customer_label }} ({{ account_number }})</strong></p>
-        {% elif account_number %}
-            <p>Viewing customer account: <strong>{{ account_number }}</strong></p>
-        {% endif %}
-        {% if batch_id %}
-            <div class="btn-row" style="margin-top:0; margin-bottom:14px; align-items:center;">
-                <div>
-                    Batch status:
-                    <strong>
-                        {% for batch in recent_batches %}{% if batch_id == batch.pk|stringformat:"s" %}{{ batch.label }}{% endif %}{% endfor %}
-                        {% if batch_id == "latest" and latest_batch %}{{ latest_batch.label }}{% endif %}
-                    </strong>
-                    {% if records and records.0.batch_is_printed %}
-                        <span> / Printed{% if records.0.batch_printed_at %} on {{ records.0.batch_printed_at|date:"m/d/Y g:i A" }}{% endif %}</span>
-                    {% else %}
-                        <span> / Unprinted</span>
-                    {% endif %}
-                </div>
-                {% if batch_id %}
-                <form method="post" action="{% url 'admin:reports_reportcenter_saved_invoices_batch_toggle_printed' %}">
-                    {% csrf_token %}
-                    <input type="hidden" name="batch_id" value="{% if batch_id == 'latest' and latest_batch %}{{ latest_batch.pk }}{% else %}{{ batch_id }}{% endif %}">
-                    <input type="hidden" name="return_query" value="{{ request.GET.urlencode }}">
-                    <button class="btn-secondary" type="submit">
-                        {% if records and records.0.batch_is_printed %}Clear Printed{% else %}Mark Printed{% endif %}
-                    </button>
-                </form>
-                {% endif %}
-            </div>
-        {% endif %}
         {% if records %}
             <div class="btn-row" style="margin-top:0; margin-bottom:14px;">
                 <a class="btn-secondary" href="{{ merged_print_url }}" target="_blank">Print All Visible as One PDF</a>
@@ -187,30 +136,41 @@
             </div>
         {% endif %}
         <div class="table-wrap">
-            <table id="result_list">
+            <table id="result_list" class="dispatch-table">
                 <thead>
                     <tr>
+                        <th>Batch Action</th>
                         <th>Generated</th>
                         <th>Batch</th>
                         <th>Printed</th>
                         <th>Customer</th>
                         <th>Account #</th>
                         <th>Invoice #</th>
-                        <th>Type</th>
                         <th>Saved File</th>
                         <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                 {% for record in records %}
-                    <tr>
+                    <tr class="{{ record.batch_group_class }}{% if record.batch_group_start %} batch-start{% endif %}">
+                        <td>
+                            {% if record.show_batch_toggle %}
+                            <form method="post" action="{% url 'admin:reports_reportcenter_saved_invoices_batch_toggle_printed' %}">
+                                {% csrf_token %}
+                                <input type="hidden" name="batch_id" value="{{ record.batch_id }}">
+                                <input type="hidden" name="return_query" value="{{ request.GET.urlencode }}">
+                                <button class="dispatch-mini-btn" type="submit">
+                                    {% if record.batch_is_printed %}Mark Unprinted{% else %}Mark Printed{% endif %}
+                                </button>
+                            </form>
+                            {% endif %}
+                        </td>
                         <td>{{ record.generated_date }}</td>
                         <td class="mono">{{ record.batch_label|default:"-" }}</td>
                         <td>{% if record.batch_is_printed %}Printed{% else %}Unprinted{% endif %}</td>
                         <td>{{ record.customer_label }}</td>
                         <td>{{ record.account_number }}</td>
                         <td class="mono">{{ record.invoice_number }}</td>
-                        <td>{{ record.marker }}</td>
                         <td class="mono">{{ record.relative_path }}</td>
                         <td><a href="{% url 'portal:saved_invoice_file' %}?path={{ record.relative_path|urlencode }}" target="_blank">Open PDF</a></td>
                     </tr>

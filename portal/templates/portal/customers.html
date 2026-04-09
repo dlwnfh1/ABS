@@ -8,6 +8,7 @@
         </div>
         <div class="full btn-row">
             <button class="btn-primary" type="submit">Apply</button>
+            <a class="btn btn-secondary" href="{% url 'portal:customer_create' %}">New Customer</a>
         </div>
     </form>
 </div>
@@ -43,8 +44,7 @@
                     </td>
                     <td>
                         <a href="{{ row.quick_payment_url }}">Add Payment</a> /
-                        <a href="{{ row.statement_url }}">History</a> /
-                        <a href="{{ row.saved_pdf_url }}">Invoice Dispatch</a>
+                        <a href="{{ row.statement_url }}">History</a>
                     </td>
                 </tr>
             {% empty %}
@@ -53,5 +53,27 @@
             </tbody>
         </table>
     </div>
+    {% if page_obj and page_obj.paginator.num_pages > 1 %}
+    <div class="pagination">
+        <div class="page-info">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</div>
+        <div class="page-links">
+            {% if page_obj.has_previous %}
+                <a class="btn btn-secondary" href="?{% if page_query %}{{ page_query }}&{% endif %}page={{ page_obj.previous_page_number }}">Previous</a>
+            {% endif %}
+            {% for num in page_numbers %}
+                {% if num == page_obj.paginator.ELLIPSIS %}
+                    <span class="page-ellipsis">…</span>
+                {% elif page_obj.number == num %}
+                    <span class="page-link active">{{ num }}</span>
+                {% else %}
+                    <a class="page-link" href="?{% if page_query %}{{ page_query }}&{% endif %}page={{ num }}">{{ num }}</a>
+                {% endif %}
+            {% endfor %}
+            {% if page_obj.has_next %}
+                <a class="btn btn-secondary" href="?{% if page_query %}{{ page_query }}&{% endif %}page={{ page_obj.next_page_number }}">Next</a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
 </div>
 {% endblock %}
