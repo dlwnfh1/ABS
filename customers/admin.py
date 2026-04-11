@@ -252,6 +252,28 @@ class CustomerAdmin(admin.ModelAdmin):
         extra_context["showing_all_filtered"] = original_get.get("all") == "1"
         extra_context["import_csv_url"] = reverse("admin:customers_customer_import_csv")
         extra_context["export_csv_url"] = reverse("admin:customers_customer_export_csv")
+        extra_context["invoice_action_buttons"] = [
+            {
+                "action": "generate_all_due_action",
+                "label": "Generate All Due",
+                "confirm": "Generate all due invoices for the selected customers?",
+            },
+            {
+                "action": "force_generate_all_due_action",
+                "label": "Force Generate All Due",
+                "confirm": "Force generate all due invoices for the selected customers?",
+            },
+            {
+                "action": "generate_next_action",
+                "label": "Generate Next",
+                "confirm": "Generate the next invoice for the selected customers?",
+            },
+            {
+                "action": "force_generate_next_action",
+                "label": "Force Generate Next",
+                "confirm": "Force generate the next invoice for the selected customers?",
+            },
+        ]
         return super().changelist_view(request, extra_context=extra_context)
 
     def change_view(self, request, object_id, form_url="", extra_context=None):

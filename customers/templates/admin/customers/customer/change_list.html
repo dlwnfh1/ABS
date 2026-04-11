@@ -117,6 +117,19 @@
 {% block content_title %}
 {{ block.super }}
 <div style="margin: 12px 0 4px 0;">
+    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
+        {% for item in invoice_action_buttons %}
+        <button
+            type="button"
+            class="codex-action-button"
+            data-action="{{ item.action }}"
+            data-confirm="{{ item.confirm }}"
+            style="padding:8px 12px; border:1px solid #cbd5e1; border-radius:999px; background:#f8fafc; color:#0f172a; font-weight:600; cursor:pointer;"
+        >
+            {{ item.label }}
+        </button>
+        {% endfor %}
+    </div>
     <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px;">
         {% for item in workflow_filters %}
         <a href="{{ item.url }}" style="padding:6px 10px; border:1px solid #d1d5db; border-radius:999px; text-decoration:none; {% if item.active %}background:#111827;color:#fff;border-color:#111827;{% else %}background:#fff;color:#111827;{% endif %}">
@@ -324,6 +337,32 @@
 
         var changelistForm = document.getElementById("changelist-form");
         if (changelistForm) {
+            document.querySelectorAll(".codex-action-button").forEach(function (button) {
+                button.addEventListener("click", function () {
+                    var selected = changelistForm.querySelectorAll('input.action-select:checked, input[name="_selected_action"]:checked');
+                    if (!selected.length) {
+                        window.alert("Select at least one customer first.");
+                        return;
+                    }
+                    var action = button.getAttribute("data-action");
+                    var message = button.getAttribute("data-confirm") || "Run this action for the selected customers?";
+                    if (!window.confirm(message)) {
+                        return;
+                    }
+                    var actionSelect = changelistForm.querySelector('select[name="action"]');
+                    if (!actionSelect) {
+                        window.alert("Action selector was not found.");
+                        return;
+                    }
+                    actionSelect.value = action;
+                    var actionIndex = changelistForm.querySelector('input[name="index"]');
+                    if (actionIndex) {
+                        actionIndex.value = "0";
+                    }
+                    changelistForm.requestSubmit();
+                });
+            });
+
             changelistForm.addEventListener("submit", function () {
                 var actionSelect = changelistForm.querySelector('select[name="action"]');
                 var action = actionSelect ? actionSelect.value : "";

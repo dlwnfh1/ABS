@@ -35,6 +35,7 @@ from .forms import PortalCustomerCreateForm, PortalCustomerEditForm, PortalQuick
 
 def _portal_context(request, **extra):
     unprinted_batch_count = InvoiceGenerationBatch.objects.filter(is_printed=False).count()
+    unprinted_invoice_count = SavedInvoicePDF.objects.filter(batch__is_printed=False, marker="CURRENT").count()
     return {
         "nav_items": [
             {"label": "Customers", "url": reverse("portal:customer_list"), "key": "customers"},
@@ -43,6 +44,7 @@ def _portal_context(request, **extra):
             {"label": "Reports", "url": reverse("portal:report_index"), "key": "reports"},
         ],
         "unprinted_batch_count": unprinted_batch_count,
+        "unprinted_invoice_count": unprinted_invoice_count,
         **extra,
     }
 
