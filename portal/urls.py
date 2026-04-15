@@ -29,5 +29,7 @@ urlpatterns = [
     path("reports/payments/", views.payments_report_view, name="payments_report"),
     path("reports/overdue-customers/", views.overdue_customers_view, name="overdue_customers"),
     path("reports/upcoming-billing/", views.upcoming_billing_view, name="upcoming_billing"),
+    path("reports/non-billable-customers/", views.non_billable_customers_view, name="non_billable_customers"),
+    path("reports/auto-ach-review/", views.auto_ach_review_view, name="auto_ach_review"),
     path("reports/customer-statement/", views.customer_statement_view, name="customer_statement"),
 ]

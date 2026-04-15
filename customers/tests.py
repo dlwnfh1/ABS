@@ -17,8 +17,8 @@ class CustomerCsvAdminTests(TestCase):
     def test_import_csv_creates_customer_and_service(self):
         content = "\n".join(
             [
-                "account_number,customer_name,billing_address1,billing_address2,email_address,billing_term,tax_rate,first_billing_date,customer_is_active,service_name,service_address1,service_address2,activation_date,billing_amount,service_is_active",
-                "A100,Acme Corp,1 Main St,,billing@example.com,3,8.25,01-01-2026,1,Monitoring Service,10 Service Rd,,01-01-2026,100.00,1",
+                "account_number,customer_name,billing_address1,billing_address2,phone_number,billing_term,tax_rate,first_billing_date,customer_is_active,service_name,service_address1,service_address2,activation_date,billing_amount,service_billing_status,service_is_active",
+                "A100,Acme Corp,1 Main St,,123-456-7890,3,8.25,01-01-2026,1,Monitoring Service,10 Service Rd,,01-01-2026,100.00,billable,1",
             ]
         )
         upload = SimpleUploadedFile("customers.csv", content.encode("utf-8"), content_type="text/csv")
@@ -58,8 +58,8 @@ class CustomerCsvAdminTests(TestCase):
     def test_import_csv_accepts_slash_dates(self):
         content = "\n".join(
             [
-                "account_number,customer_name,billing_address1,billing_address2,email_address,billing_term,tax_rate,first_billing_date,customer_is_active,service_name,service_address1,service_address2,activation_date,billing_amount,service_is_active",
-                "B200,Slash Date Co,2 Main St,,billing2@example.com,3,8.25,8/1/2025,1,Monitoring Service,20 Service Rd,,2/4/2013,90.00,1",
+                "account_number,customer_name,billing_address1,billing_address2,phone_number,billing_term,tax_rate,first_billing_date,customer_is_active,service_name,service_address1,service_address2,activation_date,billing_amount,service_billing_status,service_is_active",
+                "B200,Slash Date Co,2 Main St,,234-567-8901,3,8.25,8/1/2025,1,Monitoring Service,20 Service Rd,,2/4/2013,90.00,billable,1",
             ]
         )
         upload = SimpleUploadedFile("customers_slash.csv", content.encode("utf-8"), content_type="text/csv")
@@ -74,8 +74,8 @@ class CustomerCsvAdminTests(TestCase):
     def test_import_csv_allows_blank_activation_date(self):
         content = "\n".join(
             [
-                "account_number,customer_name,billing_address1,billing_address2,email_address,billing_term,tax_rate,first_billing_date,customer_is_active,service_name,service_address1,service_address2,activation_date,billing_amount,service_is_active",
-                "C300,Blank Activation Co,3 Main St,,billing3@example.com,3,8.25,03-01-2026,1,Monitoring Service,30 Service Rd,,,95.00,1",
+                "account_number,customer_name,billing_address1,billing_address2,phone_number,billing_term,tax_rate,first_billing_date,customer_is_active,service_name,service_address1,service_address2,activation_date,billing_amount,service_billing_status,service_is_active",
+                "C300,Blank Activation Co,3 Main St,,345-678-9012,3,8.25,03-01-2026,1,Monitoring Service,30 Service Rd,,,95.00,billable,1",
             ]
         )
         upload = SimpleUploadedFile("customers_blank_activation.csv", content.encode("utf-8"), content_type="text/csv")

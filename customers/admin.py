@@ -96,6 +96,7 @@ class CustomerAdmin(admin.ModelAdmin):
         "next_invoice_status",
         "next_invoice_period",
         "open_balance",
+        "auto_ach",
         "last_payment_date_display",
         "view_invoices_link",
         "payment_count",
@@ -114,9 +115,9 @@ class CustomerAdmin(admin.ModelAdmin):
     inlines = [ServiceInline]
     actions = [
         "generate_all_due_action",
-        "force_generate_all_due_action",
         "generate_next_action",
         "force_generate_next_action",
+        "force_generate_all_due_action",
     ]
 
     def _ensure_candidate_map(self):
@@ -185,6 +186,15 @@ class CustomerAdmin(admin.ModelAdmin):
             query_string = query_string[1:]
         return QueryDict(query_string, mutable=True)
 
+    @staticmethod
+    def _format_auto_ach_review_summary(customers):
+        if not customers:
+            return ""
+        visible = [customer.name for customer in customers[:5]]
+        if len(customers) > 5:
+            visible.append(f"외 {len(customers) - 5}명")
+        return ", ".join(visible)
+
     def get_queryset(self, request):
         filter_params = getattr(request, "_custom_filter_params", request.GET)
         queryset = super().get_queryset(request)
@@ -252,16 +262,20 @@ class CustomerAdmin(admin.ModelAdmin):
         extra_context["showing_all_filtered"] = original_get.get("all") == "1"
         extra_context["import_csv_url"] = reverse("admin:customers_customer_import_csv")
         extra_context["export_csv_url"] = reverse("admin:customers_customer_export_csv")
+        today = timezone.localdate()
+        auto_ach_review_customers = [
+            customer
+            for customer in Customer.objects.filter(is_active=True, auto_ach=True).only("id", "name", "account_number", "is_active", "auto_ach", "first_billing_date", "billing_term")
+            if customer.auto_ach_review_needed(today)
+        ]
+        extra_context["auto_ach_review_count"] = len(auto_ach_review_customers)
+        extra_context["auto_ach_review_summary"] = self._format_auto_ach_review_summary(auto_ach_review_customers)
+        extra_context["auto_ach_review_url"] = reverse("admin:reports_reportcenter_auto_ach_review")
         extra_context["invoice_action_buttons"] = [
             {
                 "action": "generate_all_due_action",
                 "label": "Generate All Due",
                 "confirm": "Generate all due invoices for the selected customers?",
-            },
-            {
-                "action": "force_generate_all_due_action",
-                "label": "Force Generate All Due",
-                "confirm": "Force generate all due invoices for the selected customers?",
             },
             {
                 "action": "generate_next_action",
@@ -272,6 +286,11 @@ class CustomerAdmin(admin.ModelAdmin):
                 "action": "force_generate_next_action",
                 "label": "Force Generate Next",
                 "confirm": "Force generate the next invoice for the selected customers?",
+            },
+            {
+                "action": "force_generate_all_due_action",
+                "label": "Force Generate All Due",
+                "confirm": "Force generate all due invoices for the selected customers?",
             },
         ]
         return super().changelist_view(request, extra_context=extra_context)
@@ -476,8 +495,9 @@ class CustomerAdmin(admin.ModelAdmin):
                 "customer_name",
                 "billing_address1",
                 "billing_address2",
-                "email_address",
+                "phone_number",
                 "billing_term",
+                "auto_ach",
                 "tax_rate",
                 "first_billing_date",
                 "customer_is_active",
@@ -486,6 +506,7 @@ class CustomerAdmin(admin.ModelAdmin):
                 "service_address2",
                 "activation_date",
                 "billing_amount",
+                "service_billing_status",
                 "service_is_active",
             ]
         )
@@ -504,6 +525,7 @@ class CustomerAdmin(admin.ModelAdmin):
                         customer.billing_address2,
                         customer.email_address,
                         customer.billing_term,
+                        customer.auto_ach,
                         customer.tax_rate,
                         customer.first_billing_date.strftime("%m-%d-%Y") if customer.first_billing_date else "",
                         "1" if customer.is_active else "0",
@@ -512,6 +534,7 @@ class CustomerAdmin(admin.ModelAdmin):
                         service.service_address2 if service else "",
                         service.activation_date.strftime("%m-%d-%Y") if service and service.activation_date else "",
                         service.billing_amount if service else "",
+                        service.billing_status if service else "",
                         "1" if service and service.is_active else "0",
                     ]
                 )
@@ -527,8 +550,9 @@ class CustomerAdmin(admin.ModelAdmin):
                 "customer_name",
                 "billing_address1",
                 "billing_address2",
-                "email_address",
+                "phone_number",
                 "billing_term",
+                "auto_ach",
                 "tax_rate",
                 "first_billing_date",
                 "customer_is_active",
@@ -537,6 +561,7 @@ class CustomerAdmin(admin.ModelAdmin):
                 "service_address2",
                 "activation_date",
                 "billing_amount",
+                "service_billing_status",
                 "service_is_active",
             ],
         }
@@ -612,8 +637,9 @@ class CustomerAdmin(admin.ModelAdmin):
                     "name": customer_name,
                     "billing_address1": billing_address1,
                     "billing_address2": (row.get("billing_address2") or "").strip(),
-                    "email_address": (row.get("email_address") or "").strip(),
+                    "email_address": self._parse_phone_number((row.get("phone_number") or row.get("email_address") or "").strip(), index),
                     "billing_term": billing_term,
+                    "auto_ach": self._parse_bool(row.get("auto_ach"), default=False),
                     "tax_rate": self._parse_decimal(row.get("tax_rate"), "tax_rate", index),
                     "first_billing_date": self._parse_optional_date(row.get("first_billing_date"), index),
                     "is_active": self._parse_bool(row.get("customer_is_active"), default=True),
@@ -636,6 +662,7 @@ class CustomerAdmin(admin.ModelAdmin):
                     "service_address2": (row.get("service_address2") or "").strip(),
                     "activation_date": self._parse_optional_service_date(row.get("activation_date"), "activation_date", index),
                     "billing_amount": self._parse_decimal(row.get("billing_amount"), "billing_amount", index),
+                    "billing_status": self._parse_service_billing_status((row.get("service_billing_status") or "").strip(), index),
                     "is_active": self._parse_bool(row.get("service_is_active"), default=True),
                 }
                 service, service_created = Service.objects.update_or_create(
@@ -662,6 +689,24 @@ class CustomerAdmin(admin.ModelAdmin):
             return int(str(value).strip())
         except (TypeError, ValueError, AttributeError):
             raise ValueError(f"Row {row_number}: {field_name} must be a valid integer.")
+
+    def _parse_phone_number(self, value, row_number):
+        value = (value or "").strip()
+        if not value:
+            return ""
+        if len(value) != 12 or value[3] != "-" or value[7] != "-":
+            raise ValueError(f"Row {row_number}: phone_number must be in 123-456-7890 format.")
+        digits = value.replace("-", "")
+        if not digits.isdigit():
+            raise ValueError(f"Row {row_number}: phone_number must be in 123-456-7890 format.")
+        return value
+
+    def _parse_service_billing_status(self, value, row_number):
+        value = (value or Service.BILLING_STATUS_BILLABLE).strip().lower()
+        valid = {choice[0] for choice in Service.BILLING_STATUS_CHOICES}
+        if value not in valid:
+            raise ValueError(f"Row {row_number}: service_billing_status must be one of {', '.join(sorted(valid))}.")
+        return value
 
     def _parse_required_date(self, value, field_name, row_number):
         parsed = self._parse_csv_date((value or "").strip())
@@ -895,5 +940,5 @@ class CustomerAdmin(admin.ModelAdmin):
 @admin.register(Service)
 class ServiceAdmin(admin.ModelAdmin):
     form = ServiceForm
-    list_display = ("service_name", "customer", "billing_amount", "activation_date", "is_active")
+    list_display = ("service_name", "customer", "billing_amount", "billing_status", "activation_date", "is_active")
     search_fields = ("service_name", "customer__account_number", "customer__name")

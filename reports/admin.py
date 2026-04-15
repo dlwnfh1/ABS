@@ -17,6 +17,7 @@ from xhtml2pdf import pisa
 from billing.models import Invoice, add_months
 from billing.pdf_utils import list_saved_invoice_pdf_records, merge_saved_invoice_pdf_records
 from payments.models import Payment
+from customers.models import Service
 
 from .models import DispatchCenter, InvoiceGenerationBatch, ReportCenter, SystemSetting
 
@@ -66,6 +67,8 @@ class ReportCenterAdmin(admin.ModelAdmin):
             path("overdue-customers/pdf/", self.admin_site.admin_view(self.overdue_customers_pdf_view), name="reports_reportcenter_overdue_customers_pdf"),
             path("overdue-customers/csv/", self.admin_site.admin_view(self.overdue_customers_csv_view), name="reports_reportcenter_overdue_customers_csv"),
             path("upcoming-billing/", self.admin_site.admin_view(self.upcoming_billing_view), name="reports_reportcenter_upcoming_billing"),
+            path("non-billable-customers/", self.admin_site.admin_view(self.non_billable_customers_view), name="reports_reportcenter_non_billable_customers"),
+            path("auto-ach-review/", self.admin_site.admin_view(self.auto_ach_review_view), name="reports_reportcenter_auto_ach_review"),
             path("upcoming-billing/pdf/", self.admin_site.admin_view(self.upcoming_billing_pdf_view), name="reports_reportcenter_upcoming_billing_pdf"),
             path("upcoming-billing/csv/", self.admin_site.admin_view(self.upcoming_billing_csv_view), name="reports_reportcenter_upcoming_billing_csv"),
             path("customer-statement/", self.admin_site.admin_view(self.customer_statement_view), name="reports_reportcenter_customer_statement"),
@@ -105,6 +108,16 @@ class ReportCenterAdmin(admin.ModelAdmin):
                         "title": "Upcoming Billing Report",
                         "description": "Customers whose next invoice should be issued now or within the next 30 days, grouped for billing planning.",
                         "url": reverse("admin:reports_reportcenter_upcoming_billing"),
+                    },
+                    {
+                        "title": "Non-Billable Customers",
+                        "description": "Active customers and services that are on billing hold or marked complimentary.",
+                        "url": reverse("admin:reports_reportcenter_non_billable_customers"),
+                    },
+                    {
+                        "title": "Auto ACH Review",
+                        "description": "Auto ACH customers whose payments should be reviewed before the next billing issue date.",
+                        "url": reverse("admin:reports_reportcenter_auto_ach_review"),
                     },
                     {
                         "title": "Customer Statement",
@@ -469,7 +482,7 @@ class ReportCenterAdmin(admin.ModelAdmin):
         term_amounts = {3: Decimal("0.00"), 6: Decimal("0.00"), 9: Decimal("0.00"), 12: Decimal("0.00")}
 
         for customer in customer_model.objects.filter(is_active=True).order_by("name", "account_number"):
-            if not customer.first_billing_date or not customer.services.filter(is_active=True).exists():
+            if not customer.first_billing_date or not customer.billable_services.exists():
                 continue
 
             latest_invoice = customer.invoices.exclude(status=Invoice.STATUS_VOID).order_by("-period_start", "-id").first()
@@ -599,6 +612,100 @@ class ReportCenterAdmin(admin.ModelAdmin):
                 f'{row["open_balance"]:.2f}',
             ])
         return response
+
+    def _build_non_billable_customers_data(self):
+        today = timezone.localdate()
+        rows = []
+        customer_ids = set()
+        totals = {
+            "customer_count": 0,
+            "service_count": 0,
+            "non_billable_amount": Decimal("0.00"),
+        }
+
+        services = (
+            Service.objects.select_related("customer")
+            .filter(customer__is_active=True, is_active=True)
+            .exclude(billing_status=Service.BILLING_STATUS_BILLABLE)
+            .order_by("customer__name", "customer__account_number", "service_name", "id")
+        )
+        for service in services:
+            customer = service.customer
+            customer_ids.add(customer.pk)
+            rows.append(
+                {
+                    "customer": customer,
+                    "service": service,
+                    "billing_status": service.get_billing_status_display(),
+                    "billing_amount": service.billing_amount,
+                    "open_balance": customer.open_balance_as_of(today),
+                    "customer_url": reverse("admin:customers_customer_change", args=[customer.pk]),
+                }
+            )
+            totals["service_count"] += 1
+            totals["non_billable_amount"] += service.billing_amount
+
+        totals["customer_count"] = len(customer_ids)
+        return today, rows, totals
+
+    def non_billable_customers_view(self, request):
+        report_date, rows, totals = self._build_non_billable_customers_data()
+        context = {
+            **self.admin_site.each_context(request),
+            "opts": self.model._meta,
+            "title": "Non-Billable Customers",
+            "report_date": report_date,
+            "rows": rows,
+            "totals": totals,
+            "reports_home_url": reverse("admin:reports_reportcenter_changelist"),
+        }
+        return TemplateResponse(request, "admin/reports/reportcenter/non_billable_customers.html", context)
+
+    def _build_auto_ach_review_data(self, scope="review"):
+        today = timezone.localdate()
+        if scope not in {"review", "all"}:
+            scope = "review"
+        rows = []
+        customer_model = Invoice._meta.get_field("customer").related_model
+        for customer in customer_model.objects.filter(is_active=True, auto_ach=True).order_by("name", "account_number"):
+            review_needed = customer.auto_ach_review_needed(today)
+            if scope == "review" and not review_needed:
+                continue
+            latest_invoice = customer.invoices.exclude(status=Invoice.STATUS_VOID).order_by("-period_start", "-id").first()
+            if latest_invoice:
+                period = f"{latest_invoice.next_period_start:%m/%d/%Y} - {latest_invoice.next_period_end:%m/%d/%Y}"
+            else:
+                period = "-"
+            rows.append({
+                "customer": customer,
+                "review_needed": review_needed,
+                "next_issue_date": customer.next_expected_issue_date(),
+                "next_billing_period": period,
+                "open_balance": customer.open_balance_as_of(today),
+                "customer_url": reverse("admin:customers_customer_change", args=[customer.pk]),
+            })
+        totals = {
+            "customer_count": len(rows),
+            "open_balance_total": sum((row["open_balance"] for row in rows), Decimal("0.00")),
+        }
+        return today, rows, totals
+
+    def auto_ach_review_view(self, request):
+        scope = (request.GET.get("scope") or "review").strip().lower()
+        if scope not in {"review", "all"}:
+            scope = "review"
+        report_date, rows, totals = self._build_auto_ach_review_data(scope=scope)
+        context = {
+            **self.admin_site.each_context(request),
+            "opts": self.model._meta,
+            "title": "Auto ACH Review",
+            "report_date": report_date,
+            "scope": scope,
+            "rows": rows,
+            "totals": totals,
+            "reports_home_url": reverse("admin:reports_reportcenter_changelist"),
+        }
+        return TemplateResponse(request, "admin/reports/reportcenter/auto_ach_review.html", context)
 
     def customer_statement_view(self, request):
         customer_model = Invoice._meta.get_field("customer").related_model

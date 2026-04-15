@@ -58,12 +58,16 @@
             </div>
         </div>
         <div>
-            <div class="stat-label">Email</div>
+            <div class="stat-label">Phone Number</div>
             <div>{{ selected_customer.email_address|default:"-" }}</div>
         </div>
         <div>
             <div class="stat-label">Billing Term</div>
             <div>{{ selected_customer.get_billing_term_display }}</div>
+        </div>
+        <div>
+            <div class="stat-label">Auto ACH</div>
+            <div>{% if selected_customer.auto_ach %}Yes{% else %}No{% endif %}</div>
         </div>
         <div>
             <div class="stat-label">First Billing Date</div>
@@ -84,6 +88,10 @@
         <div>
             <div class="stat-label">Current Service Amount</div>
             <div>{% if primary_service %}${{ primary_service.billing_amount }}{% else %}-{% endif %}</div>
+        </div>
+        <div>
+            <div class="stat-label">Billing Status</div>
+            <div>{% if primary_service %}{{ primary_service.get_billing_status_display }}{% else %}-{% endif %}</div>
         </div>
         <div class="full">
             <div class="stat-label">Service Address</div>

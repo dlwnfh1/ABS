@@ -1,0 +1,74 @@
+{% extends "portal/base.html" %}
+{% block content %}
+<div class="grid cards-3">
+    <div class="card">
+        <div class="stat-label">Report Date</div>
+        <div class="stat-value" style="font-size:1.4rem;">{{ report_date|date:"m/d/Y" }}</div>
+    </div>
+    <div class="card">
+        <div class="stat-label">{% if scope == "all" %}Auto ACH Customers{% else %}Customers To Review{% endif %}</div>
+        <div class="stat-value" style="font-size:1.4rem;">{{ totals.customer_count }}</div>
+    </div>
+    <div class="card">
+        <div class="stat-label">Open Balance Total</div>
+        <div class="stat-value" style="font-size:1.4rem;">${{ totals.open_balance_total|floatformat:2 }}</div>
+    </div>
+</div>
+
+<div class="card" style="margin-top:18px;">
+    <form method="get" style="display:flex; gap:12px; align-items:end; flex-wrap:wrap; margin-bottom:16px;">
+        <div>
+            <label for="id_scope">Show</label>
+            <select id="id_scope" name="scope">
+                <option value="review"{% if scope == "review" %} selected{% endif %}>Needs review only</option>
+                <option value="all"{% if scope == "all" %} selected{% endif %}>All Auto ACH customers</option>
+            </select>
+        </div>
+        <button type="submit" class="btn btn-secondary">Apply</button>
+    </form>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Customer</th>
+                    <th>Account #</th>
+                    <th>Review Status</th>
+                    <th>Next Issue Date</th>
+                    <th>Next Billing Period</th>
+                    <th>Open Balance</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for row in rows %}
+                <tr>
+                    <td>{{ row.customer.name }}</td>
+                    <td>{{ row.customer.account_number }}</td>
+                    <td>{% if row.review_needed %}Needs review{% else %}OK{% endif %}</td>
+                    <td>{% if row.next_issue_date %}{{ row.next_issue_date|date:"m/d/Y" }}{% else %}-{% endif %}</td>
+                    <td>{{ row.next_billing_period }}</td>
+                    <td>${{ row.open_balance|floatformat:2 }}</td>
+                    <td><a href="{{ row.statement_url }}">History</a> / <a href="{{ row.quick_payment_url }}">Add Payment</a></td>
+                </tr>
+            {% empty %}
+                <tr><td colspan="7">{% if scope == "all" %}No Auto ACH customers found.{% else %}No Auto ACH customers need review right now.{% endif %}</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if page_obj and page_obj.paginator.num_pages > 1 %}
+    <div class="pagination">
+        <div class="page-info">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</div>
+        <div class="page-links">
+            {% if page_obj.has_previous %}<a class="btn btn-secondary" href="?{% if page_query %}{{ page_query }}&{% endif %}page={{ page_obj.previous_page_number }}">Previous</a>{% endif %}
+            {% for num in page_numbers %}
+                {% if num == page_obj.paginator.ELLIPSIS %}<span class="page-ellipsis">&hellip;</span>
+                {% elif page_obj.number == num %}<span class="page-link active">{{ num }}</span>
+                {% else %}<a class="page-link" href="?{% if page_query %}{{ page_query }}&{% endif %}page={{ num }}">{{ num }}</a>{% endif %}
+            {% endfor %}
+            {% if page_obj.has_next %}<a class="btn btn-secondary" href="?{% if page_query %}{{ page_query }}&{% endif %}page={{ page_obj.next_page_number }}">Next</a>{% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

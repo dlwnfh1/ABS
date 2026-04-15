@@ -29,12 +29,15 @@
             {{ form.billing_address2 }}
         </div>
         <div>
-            <label>Email</label>
+            <label>Phone number</label>
             {{ form.email_address }}
         </div>
         <div>
             <label>Billing term</label>
             {{ form.billing_term }}
+        </div>
+        <div>
+            <label>{{ form.auto_ach }} Auto ACH customer</label>
         </div>
         <div>
             <label>Tax rate</label>
@@ -56,6 +59,10 @@
         <div>
             <label>Billing amount</label>
             {{ form.billing_amount }}
+        </div>
+        <div>
+            <label>Billing status</label>
+            {{ form.service_billing_status }}
         </div>
         <div>
             <label>Service address 1</label>

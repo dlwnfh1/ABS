@@ -1,7 +1,15 @@
-{% extends "portal/base.html" %}
+﻿{% extends "portal/base.html" %}
 {% block content %}
 <div class="card">
     <form method="get" class="form-grid">
+        <div>
+            <label>Status</label>
+            <select name="status">
+                <option value="active" {% if status_filter == "active" %}selected{% endif %}>Active</option>
+                <option value="inactive" {% if status_filter == "inactive" %}selected{% endif %}>Inactive</option>
+                <option value="all" {% if status_filter == "all" %}selected{% endif %}>All</option>
+            </select>
+        </div>
         <div class="full">
             <label>Search</label>
             <input type="text" name="q" value="{{ query }}" placeholder="Customer, account #, or billing address">
@@ -62,7 +70,7 @@
             {% endif %}
             {% for num in page_numbers %}
                 {% if num == page_obj.paginator.ELLIPSIS %}
-                    <span class="page-ellipsis">…</span>
+                    <span class="page-ellipsis">&hellip;</span>
                 {% elif page_obj.number == num %}
                     <span class="page-link active">{{ num }}</span>
                 {% else %}
@@ -77,3 +85,4 @@
     {% endif %}
 </div>
 {% endblock %}
+

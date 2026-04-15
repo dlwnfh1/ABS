@@ -116,6 +116,12 @@
 
 {% block content_title %}
 {{ block.super }}
+{% if auto_ach_review_count > 0 %}
+<div style="margin: 12px 0; padding: 12px 14px; border: 1px solid #f59e0b; border-radius: 8px; background: #fff7ed; color: #9a3412; font-weight: 700;">
+    Auto ACH payments should be reviewed for: {{ auto_ach_review_summary }}.
+    <a href="{{ auto_ach_review_url }}">Open Auto ACH Review</a>
+</div>
+{% endif %}
 <div style="margin: 12px 0 4px 0;">
     <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
         {% for item in invoice_action_buttons %}

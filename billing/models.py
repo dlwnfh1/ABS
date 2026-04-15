@@ -301,7 +301,7 @@ class Invoice(models.Model):
         for customer in customer_model.objects.filter(is_active=True).order_by("name", "account_number"):
             latest_invoice = customer.invoices.exclude(status=cls.STATUS_VOID).order_by("-period_start", "-id").first()
             if latest_invoice is None:
-                if not customer.first_billing_date or not customer.services.filter(is_active=True).exists():
+                if not customer.first_billing_date or not customer.billable_services.exists():
                     continue
                 period_start = customer.first_billing_date
                 period_end = add_months(period_start, customer.billing_term) - timedelta(days=1)
@@ -362,6 +362,9 @@ class Invoice(models.Model):
             if issue_date > as_of_date and not force:
                 return None, "not_due", f"Available on {issue_date:%Y-%m-%d}"
             return customer.ensure_initial_invoice(), "created", "Initial invoice created."
+
+        if not customer.can_generate_initial_invoice():
+            return None, "missing_setup", "Customer needs a first billing date and a billable active service."
 
         period_start = latest_invoice.next_period_start
         period_end = latest_invoice.next_period_end

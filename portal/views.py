@@ -1,4 +1,4 @@
-from calendar import monthrange
+﻿from calendar import monthrange
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -26,16 +26,33 @@ from billing.pdf_utils import (
     logo_symbol_data_uri,
     render_invoice_pdf_bytes,
 )
-from customers.models import Customer
+from customers.models import Customer, Service
 from payments.models import Payment
 from reports.models import InvoiceGenerationBatch, SavedInvoicePDF, SystemSetting
 
 from .forms import PortalCustomerCreateForm, PortalCustomerEditForm, PortalQuickPaymentForm
 
 
+def _format_auto_ach_review_summary(customers):
+    if not customers:
+        return ""
+    visible = [customer.name for customer in customers[:5]]
+    if len(customers) > 5:
+        visible.append(f"외 {len(customers) - 5}명")
+    return ", ".join(visible)
+
+
 def _portal_context(request, **extra):
+    today = timezone.localdate()
     unprinted_batch_count = InvoiceGenerationBatch.objects.filter(is_printed=False).count()
     unprinted_invoice_count = SavedInvoicePDF.objects.filter(batch__is_printed=False, marker="CURRENT").count()
+    auto_ach_review_customers = [
+        customer
+        for customer in Customer.objects.filter(is_active=True, auto_ach=True).only("id", "name", "account_number", "is_active", "auto_ach", "first_billing_date", "billing_term")
+        if customer.auto_ach_review_needed(today)
+    ]
+    auto_ach_review_count = len(auto_ach_review_customers)
+    auto_ach_review_summary = _format_auto_ach_review_summary(auto_ach_review_customers)
     return {
         "nav_items": [
             {"label": "Customers", "url": reverse("portal:customer_list"), "key": "customers"},
@@ -45,6 +62,8 @@ def _portal_context(request, **extra):
         ],
         "unprinted_batch_count": unprinted_batch_count,
         "unprinted_invoice_count": unprinted_invoice_count,
+        "auto_ach_review_count": auto_ach_review_count,
+        "auto_ach_review_summary": auto_ach_review_summary,
         **extra,
     }
 
@@ -277,7 +296,7 @@ def _build_upcoming_billing_data():
     term_amounts = {3: Decimal("0.00"), 6: Decimal("0.00"), 9: Decimal("0.00"), 12: Decimal("0.00")}
 
     for customer in Customer.objects.filter(is_active=True).order_by("name", "account_number"):
-        if not customer.first_billing_date or not customer.services.filter(is_active=True).exists():
+        if not customer.first_billing_date or not customer.billable_services.exists():
             continue
         latest_invoice = customer.invoices.exclude(status=Invoice.STATUS_VOID).order_by("-period_start", "-id").first()
         if latest_invoice:
@@ -391,7 +410,17 @@ def dashboard_view(request):
 @login_required(login_url="portal:login")
 def customer_list_view(request):
     query = (request.GET.get("q") or "").strip()
-    customers = Customer.objects.filter(is_active=True).order_by("name", "account_number")
+    status_filter = (request.GET.get("status") or "active").strip().lower()
+
+    customers = Customer.objects.order_by("name", "account_number")
+    if status_filter == "inactive":
+        customers = customers.filter(is_active=False)
+    elif status_filter == "all":
+        pass
+    else:
+        status_filter = "active"
+        customers = customers.filter(is_active=True)
+
     if query:
         customers = customers.filter(
             Q(name__icontains=query)
@@ -400,21 +429,26 @@ def customer_list_view(request):
             | Q(billing_address2__icontains=query)
         ).order_by("name", "account_number")
 
-    today = timezone.localdate()
     page_obj, page_query, page_numbers = _paginate_items(request, customers, 25)
+
     rows = []
     for customer in page_obj.object_list:
-        workflow = _customer_workflow_snapshot(customer, today)
-        last_payment = customer.payments.filter(is_voided=False).order_by("-payment_date", "-id").first()
+        workflow = _customer_workflow_snapshot(customer, timezone.localdate())
+        latest_invoice = customer.invoices.exclude(status=Invoice.STATUS_VOID).order_by("-period_start", "-id").first()
+        if latest_invoice:
+            period = f"{latest_invoice.next_period_start:%m/%d/%Y} - {latest_invoice.next_period_end:%m/%d/%Y}"
+        else:
+            period = "-"
+        last_payment = customer.payments.filter(is_voided=False).order_by("-payment_date", "-created_at", "-id").first()
         rows.append(
             {
                 "customer": customer,
-                "open_balance": customer.open_balance_as_of(today),
                 "workflow_status": workflow["status"],
-                "next_billing_period": workflow["period"] or "-",
+                "next_billing_period": period,
+                "open_balance": customer.open_balance_as_of(timezone.localdate()),
                 "last_payment": last_payment,
-                "statement_url": f'{reverse("portal:customer_statement")}?customer={customer.pk}',
                 "quick_payment_url": f'{reverse("portal:quick_payment")}?customer={customer.pk}',
+                "statement_url": f'{reverse("portal:customer_statement")}?customer={customer.pk}',
             }
         )
 
@@ -425,14 +459,14 @@ def customer_list_view(request):
             request,
             active_nav="customers",
             title="Customers",
-            query=query,
             rows=rows,
+            query=query,
+            status_filter=status_filter,
             page_obj=page_obj,
             page_query=page_query,
             page_numbers=page_numbers,
         ),
     )
-
 
 @login_required(login_url="portal:login")
 def customer_create_view(request):
@@ -447,6 +481,7 @@ def customer_create_view(request):
                     billing_address2=form.cleaned_data["billing_address2"],
                     email_address=form.cleaned_data["email_address"],
                     billing_term=int(form.cleaned_data["billing_term"]),
+                    auto_ach=form.cleaned_data["auto_ach"],
                     tax_rate=form.cleaned_data["tax_rate"],
                     first_billing_date=form.cleaned_data["first_billing_date"],
                     is_active=form.cleaned_data["is_active"],
@@ -456,6 +491,7 @@ def customer_create_view(request):
                     service_address1=form.cleaned_data["service_address1"],
                     service_address2=form.cleaned_data["service_address2"],
                     billing_amount=form.cleaned_data["billing_amount"],
+                    billing_status=form.cleaned_data["service_billing_status"],
                     is_active=form.cleaned_data["service_is_active"],
                 )
             messages.success(request, f'{customer.name} ({customer.account_number}) was created successfully.')
@@ -491,6 +527,7 @@ def customer_edit_view(request, customer_id):
                 customer.billing_address2 = form.cleaned_data["billing_address2"]
                 customer.email_address = form.cleaned_data["email_address"]
                 customer.billing_term = int(form.cleaned_data["billing_term"])
+                customer.auto_ach = form.cleaned_data["auto_ach"]
                 customer.tax_rate = form.cleaned_data["tax_rate"]
                 customer.first_billing_date = form.cleaned_data["first_billing_date"]
                 customer.is_active = form.cleaned_data["is_active"]
@@ -502,6 +539,7 @@ def customer_edit_view(request, customer_id):
                         service_address1=form.cleaned_data["service_address1"],
                         service_address2=form.cleaned_data["service_address2"],
                         billing_amount=form.cleaned_data["billing_amount"],
+                        billing_status=form.cleaned_data["service_billing_status"],
                         is_active=form.cleaned_data["service_is_active"],
                     )
                 else:
@@ -509,6 +547,7 @@ def customer_edit_view(request, customer_id):
                     service.service_address1 = form.cleaned_data["service_address1"]
                     service.service_address2 = form.cleaned_data["service_address2"]
                     service.billing_amount = form.cleaned_data["billing_amount"]
+                    service.billing_status = form.cleaned_data["service_billing_status"]
                     service.is_active = form.cleaned_data["service_is_active"]
                     service.save()
 
@@ -522,6 +561,7 @@ def customer_edit_view(request, customer_id):
             "billing_address2": customer.billing_address2,
             "email_address": customer.email_address,
             "billing_term": customer.billing_term,
+            "auto_ach": customer.auto_ach,
             "tax_rate": customer.tax_rate,
             "first_billing_date": customer.first_billing_date,
             "is_active": customer.is_active,
@@ -529,6 +569,7 @@ def customer_edit_view(request, customer_id):
             "service_address1": service.service_address1 if service else customer.billing_address1,
             "service_address2": service.service_address2 if service else customer.billing_address2,
             "billing_amount": service.billing_amount if service else Decimal("0.00"),
+            "service_billing_status": service.billing_status if service else Service.BILLING_STATUS_BILLABLE,
             "service_is_active": service.is_active if service else True,
         }
         form = PortalCustomerEditForm(initial=initial, customer=customer)
@@ -611,9 +652,7 @@ def quick_payment_view(request):
                     else:
                         messages.success(request, "Payment saved successfully.")
                     if action == "save":
-                        return redirect(
-                            f'{reverse("portal:quick_payment")}?saved_payment={payment.pk}&payment_date={payment.payment_date:%Y-%m-%d}&method={payment.method}'
-                        )
+                        return redirect(reverse("portal:customer_list"))
                     return redirect(
                         f'{reverse("portal:quick_payment")}?payment_date={payment.payment_date:%Y-%m-%d}&method={payment.method}&focus=amount'
                     )
@@ -907,6 +946,8 @@ def report_index_view(request):
         {"title": "Payment Activity Report", "description": "Payment activity for a selected date range.", "url": reverse("portal:payments_report")},
         {"title": "Past-Due Customers", "description": "Customers with overdue invoices and highest overdue term count.", "url": reverse("portal:overdue_customers")},
         {"title": "Upcoming Billing Schedule", "description": "Customers whose invoices are ready now or due soon.", "url": reverse("portal:upcoming_billing")},
+        {"title": "Non-Billable Customers", "description": "Active customers and services that are on billing hold or marked complimentary.", "url": reverse("portal:non_billable_customers")},
+        {"title": "Auto ACH Review", "description": "Auto ACH customers whose payments should be reviewed before the next billing issue date.", "url": reverse("portal:auto_ach_review")},
         {"title": "Customer Statement", "description": "Invoice and payment history for a single customer.", "url": reverse("portal:customer_statement")},
     ]
     return render(request, "portal/report_index.html", _portal_context(request, active_nav="reports", title="Reports", report_links=report_links))
@@ -1004,6 +1045,115 @@ def upcoming_billing_view(request):
     )
 
 
+def _build_non_billable_customers_data():
+    today = timezone.localdate()
+    rows = []
+    customer_ids = set()
+    totals = {
+        "customer_count": 0,
+        "service_count": 0,
+        "non_billable_amount": Decimal("0.00"),
+    }
+
+    services = (
+        Service.objects.select_related("customer")
+        .filter(customer__is_active=True, is_active=True)
+        .exclude(billing_status=Service.BILLING_STATUS_BILLABLE)
+        .order_by("customer__name", "customer__account_number", "service_name", "id")
+    )
+    for service in services:
+        customer = service.customer
+        customer_ids.add(customer.pk)
+        rows.append(
+            {
+                "customer": customer,
+                "service": service,
+                "billing_status": service.get_billing_status_display(),
+                "billing_amount": service.billing_amount,
+                "open_balance": customer.open_balance_as_of(today),
+            }
+        )
+        totals["service_count"] += 1
+        totals["non_billable_amount"] += service.billing_amount
+
+    totals["customer_count"] = len(customer_ids)
+    return today, rows, totals
+
+
+@login_required(login_url="portal:login")
+def non_billable_customers_view(request):
+    report_date, rows, totals = _build_non_billable_customers_data()
+    page_obj, page_query, page_numbers = _paginate_items(request, rows, 50)
+    return render(
+        request,
+        "portal/non_billable_customers.html",
+        _portal_context(
+            request,
+            active_nav="reports",
+            title="Non-Billable Customers",
+            report_date=report_date,
+            rows=page_obj.object_list,
+            totals=totals,
+            page_obj=page_obj,
+            page_query=page_query,
+            page_numbers=page_numbers,
+        ),
+    )
+
+
+def _build_auto_ach_review_data(scope="review"):
+    today = timezone.localdate()
+    if scope not in {"review", "all"}:
+        scope = "review"
+    rows = []
+    for customer in Customer.objects.filter(is_active=True, auto_ach=True).order_by("name", "account_number"):
+        review_needed = customer.auto_ach_review_needed(today)
+        if scope == "review" and not review_needed:
+            continue
+        workflow = _customer_workflow_snapshot(customer, today)
+        rows.append(
+            {
+                "customer": customer,
+                "review_needed": review_needed,
+                "next_issue_date": customer.next_expected_issue_date(),
+                "next_billing_period": workflow.get("period") or "-",
+                "open_balance": customer.open_balance_as_of(today),
+                "statement_url": f'{reverse("portal:customer_statement")}?customer={customer.pk}',
+                "quick_payment_url": f'{reverse("portal:quick_payment")}?customer={customer.pk}',
+            }
+        )
+    totals = {
+        "customer_count": len(rows),
+        "open_balance_total": sum((row["open_balance"] for row in rows), Decimal("0.00")),
+    }
+    return today, rows, totals
+
+
+@login_required(login_url="portal:login")
+def auto_ach_review_view(request):
+    scope = (request.GET.get("scope") or "review").strip().lower()
+    if scope not in {"review", "all"}:
+        scope = "review"
+    report_date, rows, totals = _build_auto_ach_review_data(scope=scope)
+    page_obj, page_query, page_numbers = _paginate_items(request, rows, 50)
+    return render(
+        request,
+        "portal/auto_ach_review.html",
+        _portal_context(
+            request,
+            active_nav="reports",
+            title="Auto ACH Review",
+            report_date=report_date,
+            scope=scope,
+            rows=page_obj.object_list,
+            totals=totals,
+            page_obj=page_obj,
+            page_query=page_query,
+            page_numbers=page_numbers,
+        ),
+    )
+
+
 @login_required(login_url="portal:login")
 def customer_statement_view(request):
     customers = Customer.objects.order_by("name", "account_number")
@@ -1066,3 +1216,7 @@ def customer_statement_view(request):
             primary_service=primary_service,
         ),
     )
+
+
+
+

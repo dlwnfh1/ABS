@@ -229,7 +229,7 @@
                 </td>
                 <td style="width: 42%;">
                     <div class="panel-title">Contact</div>
-                    <div>{% if selected_customer.email_address %}{{ selected_customer.email_address }}{% else %}&nbsp;{% endif %}</div>
+                    <div>{% if selected_customer.email_address %}Phone: {{ selected_customer.email_address }}{% else %}&nbsp;{% endif %}</div>
                     <div><strong>Billing Term:</strong> {{ selected_customer.get_billing_term_display }}</div>
                     <div><strong>Tax Rate:</strong> {{ selected_customer.tax_rate }}%</div>
                 </td>

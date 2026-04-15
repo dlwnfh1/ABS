@@ -149,7 +149,7 @@
                 <div class="invoice-panel">
                     <div class="invoice-panel-title">Bill To</div>
                     <strong>{{ invoice.customer.name }}</strong>
-                    <div class="muted">Account #: {{ invoice.customer.account_number }}<br>{{ invoice.customer.billing_address1 }}<br>{% if invoice.customer.billing_address2 %}{{ invoice.customer.billing_address2 }}<br>{% endif %}{% if invoice.customer.email_address %}{{ invoice.customer.email_address }}{% endif %}</div>
+                    <div class="muted">Account #: {{ invoice.customer.account_number }}<br>{{ invoice.customer.billing_address1 }}<br>{% if invoice.customer.billing_address2 %}{{ invoice.customer.billing_address2 }}<br>{% endif %}{% if invoice.customer.email_address %}Phone: {{ invoice.customer.email_address }}{% endif %}</div>
                 </div>
                 <div class="invoice-panel soft">
                     <div class="invoice-panel-title">Billing Overview</div>

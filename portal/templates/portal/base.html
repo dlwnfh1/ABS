@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ko">
 <head>
     <meta charset="utf-8">
@@ -150,8 +150,14 @@
         {% endif %}
         {% if unprinted_batch_count > 0 %}
             <div class="dispatch-alert">
-                발송할 인보이스가 생성되어 있습니다. 현재 미출력 인보이스 {{ unprinted_invoice_count }}개 (배치 {{ unprinted_batch_count }}건).
-                <a href="{% url 'portal:saved_invoice_list' %}?printed_scope=unprinted">Invoice Dispatch 열기</a>
+                발송할 인보이스 PDF가 준비되었습니다. 현재 미출력 인보이스 {{ unprinted_invoice_count }}개 (배치 {{ unprinted_batch_count }}건).
+                <a href="{% url 'portal:saved_invoice_list' %}?printed_scope=unprinted">인보이스 발송 화면 열기</a>
+            </div>
+        {% endif %}
+        {% if auto_ach_review_count > 0 %}
+            <div class="message warning">
+                Auto ACH payments should be reviewed for: {{ auto_ach_review_summary }}.
+                <a href="{% url 'portal:auto_ach_review' %}">Open Auto ACH Review</a>
             </div>
         {% endif %}
         {% block content %}{% endblock %}

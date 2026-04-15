@@ -301,7 +301,7 @@
                     <table style="width:100%; border-collapse:collapse;"><tr><td class="billto-name" style="padding:0; vertical-align:bottom;">&nbsp;</td></tr></table>
                     <div style="height:0; line-height:0; font-size:0; margin:0; padding:0;">&nbsp;</div>
                     <table style="width:100%; border-collapse:collapse;"><tr><td class="billto-name" style="padding:0 0 0 12pt; vertical-align:bottom;">{{ invoice.customer.name }} <span class="billto-account">({{ invoice.customer.account_number }})</span></td></tr></table>
-                    <div class="billto-address">{{ invoice.customer.billing_address1 }}<br>{% if invoice.customer.billing_address2 %}{{ invoice.customer.billing_address2 }}<br>{% endif %}{% if invoice.customer.email_address %}{{ invoice.customer.email_address }}{% endif %}</div>
+                    <div class="billto-address">{{ invoice.customer.billing_address1 }}<br>{% if invoice.customer.billing_address2 %}{{ invoice.customer.billing_address2 }}<br>{% endif %}{% if invoice.customer.email_address %}Phone: {{ invoice.customer.email_address }}{% endif %}</div>
                 </div>
             </td>
             <td width="58%" style="vertical-align: top;">

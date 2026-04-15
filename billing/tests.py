@@ -19,7 +19,7 @@ class BillingWorkflowTests(TestCase):
             tax_rate=Decimal("10.00"),
             billing_term=3,
             first_billing_date=date(2026, 1, 1),
-            email_address="billing@example.com",
+            email_address="123-456-7890",
         )
         self.service = Service.objects.create(
             customer=self.customer,
@@ -173,7 +173,7 @@ class BillingWorkflowTests(TestCase):
             tax_rate=Decimal("10.00"),
             billing_term=3,
             first_billing_date=date(2025, 5, 1),
-            email_address="catchup@example.com",
+            email_address="234-567-8901",
         )
         Service.objects.create(
             customer=customer,
