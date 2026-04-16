@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+﻿from datetime import date, timedelta
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError
@@ -30,7 +30,7 @@ class Invoice(models.Model):
     due_date = models.DateField(blank=True, null=True)
     partial_payment = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
     subtotal = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
-    tax_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("0.00"))
+    tax_rate = models.DecimalField(max_digits=6, decimal_places=3, default=Decimal("0.000"))
     tax_amount = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
     total_due = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_DRAFT)
@@ -412,3 +412,4 @@ def add_months(value: date, months: int) -> date:
     month_lengths = [31, 29 if year % 4 == 0 and (year % 100 != 0 or year % 400 == 0) else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
     day = min(value.day, month_lengths[month - 1])
     return date(year, month, day)
+

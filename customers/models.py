@@ -1,4 +1,4 @@
-from datetime import timedelta
+﻿from datetime import timedelta
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError
@@ -34,7 +34,7 @@ class Customer(models.Model):
     )
     billing_term = models.PositiveSmallIntegerField(choices=BILLING_TERM_CHOICES, default=3)
     auto_ach = models.BooleanField(default=False)
-    tax_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("0.00"))
+    tax_rate = models.DecimalField(max_digits=6, decimal_places=3, default=Decimal("0.000"))
     first_billing_date = models.DateField(blank=True, null=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -180,6 +180,7 @@ class Service(models.Model):
             self.is_active = False
         super().save(*args, **kwargs)
         self.customer.ensure_initial_invoice()
+
 
 
 
