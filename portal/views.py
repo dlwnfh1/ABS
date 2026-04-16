@@ -8,7 +8,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db import transaction
-from django.db.models import Max, Q
+from django.db.models import Max, Prefetch, Q
 from django.http import FileResponse, Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
@@ -27,7 +27,7 @@ from billing.pdf_utils import (
     render_invoice_pdf_bytes,
 )
 from customers.models import Customer, Service
-from payments.models import Payment
+from payments.models import Payment, PaymentAllocation
 from reports.models import InvoiceGenerationBatch, SavedInvoicePDF, SystemSetting
 
 from .forms import PortalCustomerCreateForm, PortalCustomerEditForm, PortalQuickPaymentForm
@@ -42,13 +42,46 @@ def _format_auto_ach_review_summary(customers):
     return ", ".join(visible)
 
 
+def _portal_customer_queryset():
+    invoice_qs = (
+        Invoice.objects.exclude(status=Invoice.STATUS_VOID)
+        .prefetch_related(
+            Prefetch(
+                "allocations",
+                queryset=PaymentAllocation.objects.select_related("payment")
+                .filter(payment__is_voided=False)
+                .order_by("payment__payment_date", "id"),
+                to_attr="_prefetched_valid_allocations",
+            )
+        )
+        .order_by("-period_start", "-id")
+    )
+    return Customer.objects.prefetch_related(
+        Prefetch(
+            "services",
+            queryset=Service.objects.filter(is_active=True).order_by("id"),
+            to_attr="_prefetched_active_services",
+        ),
+        Prefetch(
+            "invoices",
+            queryset=invoice_qs,
+            to_attr="_prefetched_nonvoid_invoices",
+        ),
+        Prefetch(
+            "payments",
+            queryset=Payment.objects.filter(is_voided=False).order_by("-payment_date", "-created_at", "-id"),
+            to_attr="_prefetched_nonvoid_payments",
+        ),
+    )
+
+
 def _portal_context(request, **extra):
     today = timezone.localdate()
     unprinted_batch_count = InvoiceGenerationBatch.objects.filter(is_printed=False).count()
     unprinted_invoice_count = SavedInvoicePDF.objects.filter(batch__is_printed=False, marker="CURRENT").count()
     auto_ach_review_customers = [
         customer
-        for customer in Customer.objects.filter(is_active=True, auto_ach=True).only("id", "name", "account_number", "is_active", "auto_ach", "first_billing_date", "billing_term")
+        for customer in _portal_customer_queryset().filter(is_active=True, auto_ach=True).order_by("name", "account_number")
         if customer.auto_ach_review_needed(today)
     ]
     auto_ach_review_count = len(auto_ach_review_customers)
@@ -147,7 +180,7 @@ def _pdf_response(pdf_bytes, filename, as_attachment):
 def _customer_summary(customer):
     if not customer:
         return None
-    latest_payment = customer.payments.filter(is_voided=False).order_by("-payment_date", "-id").first()
+    latest_payment = next(iter(customer._active_payments_cache()), None)
     return {
         "name": customer.name,
         "account_number": customer.account_number,
@@ -188,8 +221,8 @@ def _build_ar_aging_data():
         "term_3_plus": Decimal("0.00"),
         "total": Decimal("0.00"),
     }
-    for customer in Customer.objects.filter(is_active=True).order_by("name", "account_number"):
-        invoices = customer.invoices.exclude(status=Invoice.STATUS_VOID).order_by("period_start", "id")
+    for customer in _portal_customer_queryset().filter(is_active=True).order_by("name", "account_number"):
+        invoices = sorted(customer._nonvoid_invoices_cache(), key=lambda invoice: (invoice.period_start, invoice.id))
         bucket_totals = {key: Decimal("0.00") for key in ("current", "term_1", "term_2", "term_3_plus")}
         for invoice in invoices:
             if invoice.issue_date and invoice.issue_date > today:
@@ -252,9 +285,10 @@ def _build_overdue_customers_data():
         "open_total": Decimal("0.00"),
         "max_terms_overdue": 0,
     }
-    for customer in Customer.objects.filter(is_active=True).order_by("name", "account_number"):
+    for customer in _portal_customer_queryset().filter(is_active=True).order_by("name", "account_number"):
         overdue_entries = []
-        for invoice in customer.invoices.exclude(status=Invoice.STATUS_VOID).order_by("due_date", "period_start", "id"):
+        invoices = sorted(customer._nonvoid_invoices_cache(), key=lambda invoice: (invoice.due_date or date.min, invoice.period_start, invoice.id))
+        for invoice in invoices:
             if invoice.issue_date and invoice.issue_date > today:
                 continue
             amount = invoice.outstanding_amount_as_of(today)
@@ -296,10 +330,10 @@ def _build_upcoming_billing_data():
     term_counts = {3: 0, 6: 0, 9: 0, 12: 0}
     term_amounts = {3: Decimal("0.00"), 6: Decimal("0.00"), 9: Decimal("0.00"), 12: Decimal("0.00")}
 
-    for customer in Customer.objects.filter(is_active=True).order_by("name", "account_number"):
-        if not customer.first_billing_date or not customer.billable_services.exists():
+    for customer in _portal_customer_queryset().filter(is_active=True).order_by("name", "account_number"):
+        if not customer.first_billing_date or not customer._billable_services_cache():
             continue
-        latest_invoice = customer.invoices.exclude(status=Invoice.STATUS_VOID).order_by("-period_start", "-id").first()
+        latest_invoice = next(iter(customer._nonvoid_invoices_cache()), None)
         if latest_invoice:
             period_start = latest_invoice.next_period_start
             period_end = latest_invoice.next_period_end
@@ -370,24 +404,20 @@ def _build_upcoming_billing_data():
 
 
 def _customer_workflow_snapshot(customer, as_of_date):
-    latest_invoice = customer.invoices.exclude(status=Invoice.STATUS_VOID).order_by("-period_start", "-id").first()
+    latest_invoice = next(iter(customer._nonvoid_invoices_cache()), None)
     if latest_invoice:
         period_start = latest_invoice.next_period_start
         period_end = latest_invoice.next_period_end
         issue_date = period_start - timedelta(days=15)
-        existing_invoice = Invoice.objects.filter(customer=customer, period_start=period_start, period_end=period_end).first()
-        if existing_invoice:
-            status = "Already Issued"
+        days_until_issue = (issue_date - as_of_date).days
+        if days_until_issue <= 0:
+            status = "Ready"
+        elif days_until_issue <= 15:
+            status = "Due in 15 Days"
+        elif days_until_issue <= 30:
+            status = "Due in 30 Days"
         else:
-            days_until_issue = (issue_date - as_of_date).days
-            if days_until_issue <= 0:
-                status = "Ready"
-            elif days_until_issue <= 15:
-                status = "Due in 15 Days"
-            elif days_until_issue <= 30:
-                status = "Due in 30 Days"
-            else:
-                status = "Already Issued"
+            status = "Already Issued"
         return {
             "status": status,
             "period": f"{period_start:%m/%d/%Y} - {period_end:%m/%d/%Y}",
@@ -413,7 +443,7 @@ def customer_list_view(request):
     query = (request.GET.get("q") or "").strip()
     status_filter = (request.GET.get("status") or "active").strip().lower()
 
-    customers = Customer.objects.order_by("name", "account_number")
+    customers = _portal_customer_queryset().order_by("name", "account_number")
     if status_filter == "inactive":
         customers = customers.filter(is_active=False)
     elif status_filter == "all":
@@ -435,12 +465,12 @@ def customer_list_view(request):
     rows = []
     for customer in page_obj.object_list:
         workflow = _customer_workflow_snapshot(customer, timezone.localdate())
-        latest_invoice = customer.invoices.exclude(status=Invoice.STATUS_VOID).order_by("-period_start", "-id").first()
+        latest_invoice = next(iter(customer._nonvoid_invoices_cache()), None)
         if latest_invoice:
             period = f"{latest_invoice.next_period_start:%m/%d/%Y} - {latest_invoice.next_period_end:%m/%d/%Y}"
         else:
             period = "-"
-        last_payment = customer.payments.filter(is_voided=False).order_by("-payment_date", "-created_at", "-id").first()
+        last_payment = next(iter(customer._active_payments_cache()), None)
         rows.append(
             {
                 "customer": customer,
@@ -1107,7 +1137,7 @@ def _build_auto_ach_review_data(scope="review"):
     if scope not in {"review", "all"}:
         scope = "review"
     rows = []
-    for customer in Customer.objects.filter(is_active=True, auto_ach=True).order_by("name", "account_number"):
+    for customer in _portal_customer_queryset().filter(is_active=True, auto_ach=True).order_by("name", "account_number"):
         review_needed = customer.auto_ach_review_needed(today)
         if scope == "review" and not review_needed:
             continue

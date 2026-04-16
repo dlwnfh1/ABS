@@ -98,6 +98,18 @@ class Invoice(models.Model):
         return Payment.objects.filter(customer=self.customer, is_voided=False)
 
     def allocated_amount_as_of(self, as_of_date=None, exclude_payment_id=None) -> Decimal:
+        prefetched_allocations = getattr(self, "_prefetched_valid_allocations", None)
+        if prefetched_allocations is not None:
+            total = Decimal("0.00")
+            for allocation in prefetched_allocations:
+                payment = allocation.payment
+                if as_of_date and payment.payment_date > as_of_date:
+                    continue
+                if exclude_payment_id and allocation.payment_id == exclude_payment_id:
+                    continue
+                total += Decimal(allocation.amount)
+            return Decimal(total).quantize(Decimal("0.01"))
+
         allocations = self.allocations.filter(payment__is_voided=False)
         if as_of_date:
             allocations = allocations.filter(payment__payment_date__lte=as_of_date)

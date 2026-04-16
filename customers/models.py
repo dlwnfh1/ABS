@@ -50,39 +50,79 @@ class Customer(models.Model):
         if self.first_billing_date and self.billing_term not in dict(self.BILLING_TERM_CHOICES):
             raise ValidationError("Billing term must be one of 3, 6, 9, or 12 months.")
 
+    def _active_services_cache(self):
+        services = getattr(self, "_prefetched_active_services", None)
+        if services is not None:
+            return services
+        return list(self.services.filter(is_active=True))
+
+    def _billable_services_cache(self):
+        services = getattr(self, "_prefetched_billable_services", None)
+        if services is not None:
+            return services
+        active_services = getattr(self, "_prefetched_active_services", None)
+        if active_services is not None:
+            return [
+                service
+                for service in active_services
+                if service.billing_status == Service.BILLING_STATUS_BILLABLE
+            ]
+        return list(
+            self.services.filter(
+                is_active=True,
+                billing_status=Service.BILLING_STATUS_BILLABLE,
+            )
+        )
+
+    def _nonvoid_invoices_cache(self):
+        invoices = getattr(self, "_prefetched_nonvoid_invoices", None)
+        if invoices is not None:
+            return invoices
+        from billing.models import Invoice
+
+        return list(self.invoices.exclude(status=Invoice.STATUS_VOID).order_by("-period_start", "-id"))
+
+    def _active_payments_cache(self):
+        payments = getattr(self, "_prefetched_nonvoid_payments", None)
+        if payments is not None:
+            return payments
+        return list(self.payments.filter(is_voided=False).order_by("-payment_date", "-created_at", "-id"))
+
     @property
     def billable_services(self):
         return self.services.filter(is_active=True, billing_status=Service.BILLING_STATUS_BILLABLE)
 
     @property
     def current_billing_amount(self) -> Decimal:
-        amount = self.billable_services.aggregate(total=Sum("billing_amount"))["total"] or Decimal("0.00")
+        amount = sum((service.billing_amount for service in self._billable_services_cache()), Decimal("0.00"))
         return Decimal(amount).quantize(Decimal("0.01"))
 
     def can_generate_initial_invoice(self) -> bool:
-        return bool(self.first_billing_date and self.is_active and self.billable_services.exists())
+        return bool(self.first_billing_date and self.is_active and self._billable_services_cache())
 
     def open_balance_as_of(self, as_of_date=None) -> Decimal:
-        from billing.models import Invoice
-
         as_of_date = as_of_date or timezone.localdate()
-        latest_issued_invoice = (
-            self.invoices.exclude(status=Invoice.STATUS_VOID)
-            .filter(issue_date__lte=as_of_date)
-            .order_by("-period_start", "-id")
-            .first()
+        latest_issued_invoice = next(
+            (
+                invoice
+                for invoice in self._nonvoid_invoices_cache()
+                if invoice.issue_date and invoice.issue_date <= as_of_date
+            ),
+            None,
         )
         if not latest_issued_invoice:
             return Decimal("0.00")
 
-        gross_total = latest_issued_invoice.statement_base_totals()["gross_total"]
-        payments_after_issue = (
-            self.payments.filter(
-                is_voided=False,
-                payment_date__gt=latest_issued_invoice.issue_date,
-                payment_date__lte=as_of_date,
-            )
-            .aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
+        gross_total = (Decimal(latest_issued_invoice.subtotal) + Decimal(latest_issued_invoice.tax_amount)).quantize(
+            Decimal("0.01")
+        )
+        payments_after_issue = sum(
+            (
+                Decimal(payment.amount)
+                for payment in self._active_payments_cache()
+                if latest_issued_invoice.issue_date < payment.payment_date <= as_of_date
+            ),
+            Decimal("0.00"),
         )
         balance = Decimal(gross_total) - Decimal(payments_after_issue)
         if balance < Decimal("0.00"):
@@ -90,9 +130,7 @@ class Customer(models.Model):
         return balance.quantize(Decimal("0.01"))
 
     def next_expected_issue_date(self):
-        from billing.models import Invoice
-
-        latest_invoice = self.invoices.exclude(status=Invoice.STATUS_VOID).order_by("-period_start", "-id").first()
+        latest_invoice = next(iter(self._nonvoid_invoices_cache()), None)
         if latest_invoice:
             return latest_invoice.next_period_start - timedelta(days=15)
         if self.is_active and self.can_generate_initial_invoice():
