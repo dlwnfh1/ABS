@@ -90,37 +90,37 @@ class ReportCenterAdmin(admin.ModelAdmin):
                 "title": "Reports",
                 "report_links": [
                     {
-                        "title": "A/R Aging Report",
+                        "title": "A/R Aging Report (기간별 미수금 현황)",
                         "description": "Open receivables grouped by billing term so you can see current balances and customers who are 1, 2, or 3+ terms behind.",
                         "url": reverse("admin:reports_reportcenter_ar_aging"),
                     },
                     {
-                        "title": "Payments Report",
+                        "title": "Payments Report (페이먼 보고서)",
                         "description": "Payment activity for a selected date range, including totals by payment method.",
                         "url": reverse("admin:reports_reportcenter_payments_report"),
                     },
                     {
-                        "title": "Overdue Customers Report",
+                        "title": "Overdue Customers Report (연체 고객 현황)",
                         "description": "Customers with past-due invoices, highest overdue term count, and remaining open balance.",
                         "url": reverse("admin:reports_reportcenter_overdue_customers"),
                     },
                     {
-                        "title": "Upcoming Billing Report",
+                        "title": "Upcoming Billing Report (인보이스 일정)",
                         "description": "Customers whose next invoice should be issued now or within the next 30 days, grouped for billing planning.",
                         "url": reverse("admin:reports_reportcenter_upcoming_billing"),
                     },
                     {
-                        "title": "Non-Billable Customers",
+                        "title": "Non-Billable Customers (FREE 고객 현황)",
                         "description": "Active customers and services that are on billing hold or marked complimentary.",
                         "url": reverse("admin:reports_reportcenter_non_billable_customers"),
                     },
                     {
-                        "title": "Auto ACH Review",
+                        "title": "Auto ACH Review (자동 ACH 점검 대상)",
                         "description": "Auto ACH customers whose payments should be reviewed before the next billing issue date.",
                         "url": reverse("admin:reports_reportcenter_auto_ach_review"),
                     },
                     {
-                        "title": "Customer Statement",
+                        "title": "Customer Statement (고객별 명세서)",
                         "description": "Invoice history, payment history, and current balance for a single customer.",
                         "url": reverse("admin:reports_reportcenter_customer_statement"),
                     },
@@ -256,7 +256,7 @@ class ReportCenterAdmin(admin.ModelAdmin):
         return {
             **self.admin_site.each_context(request),
             "opts": self.model._meta,
-            "title": "A/R Aging Report",
+            "title": "A/R Aging Report (기간별 미수금 현황)",
             "rows": rows,
             "totals": totals,
             "report_date": report_date,
@@ -323,7 +323,7 @@ class ReportCenterAdmin(admin.ModelAdmin):
         return {
             **self.admin_site.each_context(request),
             "opts": self.model._meta,
-            "title": "Payments Report",
+            "title": "Payments Report (페이먼 보고서)",
             "payments": payments,
             "date_from": date_from,
             "date_to": date_to,
@@ -425,7 +425,7 @@ class ReportCenterAdmin(admin.ModelAdmin):
         return {
             **self.admin_site.each_context(request),
             "opts": self.model._meta,
-            "title": "Overdue Customers Report",
+            "title": "Overdue Customers Report (연체 고객 현황)",
             "rows": rows,
             "totals": totals,
             "report_date": report_date,
@@ -564,7 +564,7 @@ class ReportCenterAdmin(admin.ModelAdmin):
         return {
             **self.admin_site.each_context(request),
             "opts": self.model._meta,
-            "title": "Upcoming Billing Report",
+            "title": "Upcoming Billing Report (인보이스 일정)",
             "rows": rows,
             "grouped_rows": grouped_rows,
             "term_summaries": term_summaries,
@@ -653,7 +653,7 @@ class ReportCenterAdmin(admin.ModelAdmin):
         context = {
             **self.admin_site.each_context(request),
             "opts": self.model._meta,
-            "title": "Non-Billable Customers",
+            "title": "Non-Billable Customers (FREE 고객 현황)",
             "report_date": report_date,
             "rows": rows,
             "totals": totals,
@@ -698,7 +698,7 @@ class ReportCenterAdmin(admin.ModelAdmin):
         context = {
             **self.admin_site.each_context(request),
             "opts": self.model._meta,
-            "title": "Auto ACH Review",
+            "title": "Auto ACH Review (자동 ACH 점검 대상)",
             "report_date": report_date,
             "scope": scope,
             "rows": rows,
@@ -736,7 +736,7 @@ class ReportCenterAdmin(admin.ModelAdmin):
         return {
             **self.admin_site.each_context(request),
             "opts": self.model._meta,
-            "title": "Customer Statement",
+            "title": "Customer Statement (고객별 명세서)",
             "customers": customers,
             "selected_customer": selected_customer,
             "selected_customer_id": int(customer_id) if customer_id and customer_id.isdigit() else None,

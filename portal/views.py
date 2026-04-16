@@ -64,6 +64,7 @@ def _portal_context(request, **extra):
         "unprinted_invoice_count": unprinted_invoice_count,
         "auto_ach_review_count": auto_ach_review_count,
         "auto_ach_review_summary": auto_ach_review_summary,
+        "logo_symbol_data_uri": logo_symbol_data_uri(),
         **extra,
     }
 
@@ -942,13 +943,13 @@ def invoice_print_view(request, invoice_id):
 @login_required(login_url="portal:login")
 def report_index_view(request):
     report_links = [
-        {"title": "A/R by Billing Term", "description": "Open balances grouped by billing term overdue count.", "url": reverse("portal:ar_aging")},
-        {"title": "Payment Activity Report", "description": "Payment activity for a selected date range.", "url": reverse("portal:payments_report")},
-        {"title": "Past-Due Customers", "description": "Customers with overdue invoices and highest overdue term count.", "url": reverse("portal:overdue_customers")},
-        {"title": "Upcoming Billing Schedule", "description": "Customers whose invoices are ready now or due soon.", "url": reverse("portal:upcoming_billing")},
-        {"title": "Non-Billable Customers", "description": "Active customers and services that are on billing hold or marked complimentary.", "url": reverse("portal:non_billable_customers")},
-        {"title": "Auto ACH Review", "description": "Auto ACH customers whose payments should be reviewed before the next billing issue date.", "url": reverse("portal:auto_ach_review")},
-        {"title": "Customer Statement", "description": "Invoice and payment history for a single customer.", "url": reverse("portal:customer_statement")},
+        {"title": "A/R by Billing Term (기간별 미수금 현황)", "description": "Open balances grouped by billing term overdue count.", "url": reverse("portal:ar_aging")},
+        {"title": "Payment Activity Report (페이먼 보고서)", "description": "Payment activity for a selected date range.", "url": reverse("portal:payments_report")},
+        {"title": "Past-Due Customers (연체 고객 현황)", "description": "Customers with overdue invoices and highest overdue term count.", "url": reverse("portal:overdue_customers")},
+        {"title": "Upcoming Billing Schedule (인보이스 일정)", "description": "Customers whose invoices are ready now or due soon.", "url": reverse("portal:upcoming_billing")},
+        {"title": "Non-Billable Customers (FREE 고객 현황)", "description": "Active customers and services that are on billing hold or marked complimentary.", "url": reverse("portal:non_billable_customers")},
+        {"title": "Auto ACH Review (자동 ACH 점검 대상)", "description": "Auto ACH customers whose payments should be reviewed before the next billing issue date.", "url": reverse("portal:auto_ach_review")},
+        {"title": "Customer Statement (고객별 명세서)", "description": "Invoice and payment history for a single customer.", "url": reverse("portal:customer_statement")},
     ]
     return render(request, "portal/report_index.html", _portal_context(request, active_nav="reports", title="Reports", report_links=report_links))
 
@@ -963,7 +964,7 @@ def ar_aging_view(request):
         _portal_context(
             request,
             active_nav="reports",
-            title="A/R by Billing Term",
+            title="A/R by Billing Term (기간별 미수금 현황)",
             report_date=report_date,
             rows=page_obj.object_list,
             totals=totals,
@@ -987,7 +988,7 @@ def payments_report_view(request):
         _portal_context(
             request,
             active_nav="reports",
-            title="Payment Activity Report",
+            title="Payment Activity Report (페이먼 보고서)",
             date_from=date_from,
             date_to=date_to,
             payments=page_obj.object_list,
@@ -1010,7 +1011,7 @@ def overdue_customers_view(request):
         _portal_context(
             request,
             active_nav="reports",
-            title="Past-Due Customers",
+            title="Past-Due Customers (연체 고객 현황)",
             report_date=report_date,
             rows=page_obj.object_list,
             totals=totals,
@@ -1031,7 +1032,7 @@ def upcoming_billing_view(request):
         _portal_context(
             request,
             active_nav="reports",
-            title="Upcoming Billing Schedule",
+            title="Upcoming Billing Schedule (인보이스 일정)",
             report_date=report_date,
             horizon_date=horizon_date,
             rows=page_obj.object_list,
@@ -1090,7 +1091,7 @@ def non_billable_customers_view(request):
         _portal_context(
             request,
             active_nav="reports",
-            title="Non-Billable Customers",
+            title="Non-Billable Customers (FREE 고객 현황)",
             report_date=report_date,
             rows=page_obj.object_list,
             totals=totals,
@@ -1142,7 +1143,7 @@ def auto_ach_review_view(request):
         _portal_context(
             request,
             active_nav="reports",
-            title="Auto ACH Review",
+            title="Auto ACH Review (자동 ACH 점검 대상)",
             report_date=report_date,
             scope=scope,
             rows=page_obj.object_list,
@@ -1201,7 +1202,7 @@ def customer_statement_view(request):
         _portal_context(
             request,
             active_nav="reports",
-            title="Customer Statement",
+            title="Customer Statement (고객별 명세서)",
             customers=customers,
             selected_customer=selected_customer,
             selected_customer_id=int(customer_id) if customer_id and customer_id.isdigit() else None,

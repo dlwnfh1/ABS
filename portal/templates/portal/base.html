@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{{ title }} | NEO Alarm Billing</title>
+    <title>{{ title }} | ABS</title>
     <style>
         :root {
             --bg: #f4f7fb;
@@ -19,8 +19,11 @@
         a { color: var(--accent); text-decoration: none; }
         .shell { display: grid; grid-template-columns: 260px 1fr; min-height: 100vh; }
         .sidebar { background: #17324d; color: #fff; padding: 24px 18px; }
-        .brand { font-size: 1.4rem; font-weight: 800; letter-spacing: .04em; margin-bottom: 6px; }
-        .brand-sub { color: rgba(255,255,255,.76); font-size: .9rem; margin-bottom: 28px; }
+        .brand-block { display:flex; align-items:flex-start; gap:14px; margin-bottom: 28px; }
+        .brand-mark { width:56px; height:56px; border-radius:14px; background: rgba(255,255,255,.18); display:flex; align-items:center; justify-content:center; flex:0 0 auto; overflow:hidden; box-shadow: inset 0 0 0 1px rgba(255,255,255,.16); }
+        .brand-mark img { width:40px; height:auto; display:block; filter: contrast(1.25) saturate(1.15); }
+        .brand-copy { min-width:0; }
+        .brand { font-size: .98rem; font-weight: 800; letter-spacing: .07em; line-height: 1.2; margin-bottom: 0; }
         .nav a { display: block; padding: 12px 14px; border-radius: 14px; color: rgba(255,255,255,.84); margin-bottom: 8px; font-weight: 600; }
         .nav a.active, .nav a:hover { background: rgba(255,255,255,.14); color: #fff; }
         .sidebar-footer { margin-top: 28px; font-size: .9rem; color: rgba(255,255,255,.72); }
@@ -120,8 +123,14 @@
 <body>
 <div class="shell">
     <aside class="sidebar">
-        <div class="brand">NEO ALARM</div>
-        <div class="brand-sub">Billing User Portal</div>
+        <div class="brand-block">
+            <div class="brand-mark">
+                {% if logo_symbol_data_uri %}<img src="{{ logo_symbol_data_uri }}" alt="Neo logo">{% endif %}
+            </div>
+            <div class="brand-copy">
+                <div class="brand">ALARM BILLING SYSTEM (ABS)</div>
+            </div>
+        </div>
         <nav class="nav">
             {% for item in nav_items %}
                 <a href="{{ item.url }}" class="{% if active_nav == item.key %}active{% endif %}">{{ item.label }}</a>
