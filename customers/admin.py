@@ -16,6 +16,7 @@ from django.utils.html import format_html
 from django.utils import timezone
 from billing.models import Invoice
 from billing.pdf_utils import save_invoices_to_configured_folder
+from reports.notifications import send_billing_dispatch_alert
 
 from .models import Customer, Service
 
@@ -397,6 +398,7 @@ class CustomerAdmin(admin.ModelAdmin):
             save_result = save_invoices_to_configured_folder([invoice], created_by=request.user.get_username())
             if save_result and save_result.get("saved_count"):
                 self.message_user(request, f'Saved {save_result["saved_count"]} invoice PDF(s) to {save_result["date_folder"]}. Batch: {save_result["batch_label"]}.', level=messages.SUCCESS)
+                self._notify_billing_dispatch(request, customer_count=1)
         return HttpResponseRedirect(reverse("admin:customers_customer_change", args=[object_id]))
 
     def force_generate_next_invoice_view(self, request, object_id):
@@ -408,6 +410,7 @@ class CustomerAdmin(admin.ModelAdmin):
             save_result = save_invoices_to_configured_folder([invoice], created_by=request.user.get_username())
             if save_result and save_result.get("saved_count"):
                 self.message_user(request, f'Saved {save_result["saved_count"]} invoice PDF(s) to {save_result["date_folder"]}. Batch: {save_result["batch_label"]}.', level=messages.SUCCESS)
+                self._notify_billing_dispatch(request, customer_count=1)
         return HttpResponseRedirect(reverse("admin:customers_customer_change", args=[object_id]))
 
     def generate_all_due_invoices_view(self, request, object_id):
@@ -419,6 +422,7 @@ class CustomerAdmin(admin.ModelAdmin):
             save_result = save_invoices_to_configured_folder(invoices, created_by=request.user.get_username())
             if save_result and save_result.get("saved_count"):
                 self.message_user(request, f'Saved {save_result["saved_count"]} invoice PDF(s) to {save_result["date_folder"]}. Batch: {save_result["batch_label"]}.', level=messages.SUCCESS)
+                self._notify_billing_dispatch(request, customer_count=1)
         return HttpResponseRedirect(reverse("admin:customers_customer_change", args=[object_id]))
 
     def force_generate_all_due_invoices_view(self, request, object_id):
@@ -430,6 +434,7 @@ class CustomerAdmin(admin.ModelAdmin):
             save_result = save_invoices_to_configured_folder(invoices, created_by=request.user.get_username())
             if save_result and save_result.get("saved_count"):
                 self.message_user(request, f'Saved {save_result["saved_count"]} invoice PDF(s) to {save_result["date_folder"]}. Batch: {save_result["batch_label"]}.', level=messages.SUCCESS)
+                self._notify_billing_dispatch(request, customer_count=1)
         return HttpResponseRedirect(reverse("admin:customers_customer_change", args=[object_id]))
 
     @admin.action(description="Generate All Due for selected customers")
@@ -451,6 +456,7 @@ class CustomerAdmin(admin.ModelAdmin):
     def _run_invoice_action(self, request, queryset, mode, force):
         created = 0
         created_invoice_ids = []
+        created_customer_ids = set()
         skipped_messages = []
         for customer in queryset:
             if mode == "all_due":
@@ -458,6 +464,7 @@ class CustomerAdmin(admin.ModelAdmin):
                 if status == "created":
                     created += len(invoices)
                     created_invoice_ids.extend(str(invoice.pk) for invoice in invoices)
+                    created_customer_ids.add(customer.pk)
                 else:
                     skipped_messages.append(f"{customer.account_number}: {message}")
             else:
@@ -465,6 +472,7 @@ class CustomerAdmin(admin.ModelAdmin):
                 if status == "created":
                     created += 1
                     created_invoice_ids.append(str(invoice.pk))
+                    created_customer_ids.add(customer.pk)
                 else:
                     skipped_messages.append(f"{customer.account_number}: {message}")
 
@@ -476,6 +484,7 @@ class CustomerAdmin(admin.ModelAdmin):
             self.message_user(request, f"Generated {created} invoice(s).", level=messages.SUCCESS)
         if save_result and save_result.get("saved_count"):
             self.message_user(request, f'Saved {save_result["saved_count"]} invoice PDF(s) to {save_result["date_folder"]}. Batch: {save_result["batch_label"]}.', level=messages.SUCCESS)
+            self._notify_billing_dispatch(request, customer_count=len(created_customer_ids))
         for message in skipped_messages[:10]:
             self.message_user(request, message, level=messages.WARNING)
         if len(skipped_messages) > 10:
@@ -483,6 +492,23 @@ class CustomerAdmin(admin.ModelAdmin):
         if created_invoice_ids:
             invoice_list_url = reverse("admin:billing_invoice_changelist")
             return HttpResponseRedirect(f'{invoice_list_url}?generated_ids={",".join(created_invoice_ids)}')
+
+    def _notify_billing_dispatch(self, request, customer_count):
+        try:
+            sent_count = send_billing_dispatch_alert(customer_count)
+        except Exception as exc:
+            self.message_user(
+                request,
+                f"Billing alert email could not be sent: {exc}",
+                level=messages.WARNING,
+            )
+            return
+        if customer_count and not sent_count:
+            self.message_user(
+                request,
+                "Billing alert email was skipped because no billing recipients are configured.",
+                level=messages.WARNING,
+            )
 
     def export_csv_view(self, request):
         response = HttpResponse(content_type="text/csv; charset=utf-8")

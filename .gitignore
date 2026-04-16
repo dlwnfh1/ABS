@@ -7,3 +7,8 @@ __pycache__/
 venv/
 venvs/
 
+
+pdf folder/
+payment_attachments/
+staticfiles/
+media/
