@@ -4,6 +4,7 @@ import re
 from datetime import datetime, time, timedelta
 from io import BytesIO
 from pathlib import Path
+from urllib.parse import quote, unquote
 
 from django.utils import timezone
 from django.utils.text import slugify
@@ -359,7 +360,9 @@ def save_invoices_to_configured_folder(invoices, created_by=""):
             continue
         marker = "CURRENT" if latest_by_customer.get(invoice.customer_id) and latest_by_customer[invoice.customer_id].pk == invoice.pk else "PRIOR"
         customer_slug = slugify(invoice.customer.name) or f"customer-{invoice.customer_id}"
-        filename = f"{generation_date.strftime('%Y-%m-%d')}_{invoice.customer.account_number}_{customer_slug}_{invoice.invoice_number}_{marker}.pdf"
+        safe_account_number = quote(invoice.customer.account_number, safe="")
+        safe_invoice_number = quote(invoice.invoice_number, safe="")
+        filename = f"{generation_date.strftime('%Y-%m-%d')}_{safe_account_number}_{customer_slug}_{safe_invoice_number}_{marker}.pdf"
         output_path = date_folder / filename
         output_path.write_bytes(pdf_bytes)
         saved_files.append(output_path)
