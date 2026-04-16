@@ -8,7 +8,23 @@ from reports.notifications import send_ready_customer_summary
 class Command(BaseCommand):
     help = "Send the Ready customer count email to admin recipients."
 
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--force",
+            action="store_true",
+            help="Send regardless of the normal Monday/Thursday 1 PM local schedule.",
+        )
+
     def handle(self, *args, **options):
+        local_now = timezone.localtime()
+        is_scheduled_window = local_now.hour == 13
+        if not options["force"] and not is_scheduled_window:
+            self.stdout.write(
+                f"Outside 1 PM local window. No email sent. "
+                f"(local time: {local_now:%Y-%m-%d %I:%M %p})"
+            )
+            return
+
         today = timezone.localdate()
         ready_count = sum(
             1
