@@ -1,4 +1,5 @@
 {% extends "portal/base.html" %}
+{% load humanize %}
 {% block content %}
 <div class="grid cards-3">
     <div class="card">
@@ -11,7 +12,7 @@
     </div>
     <div class="card">
         <div class="stat-label">Open Balance Total</div>
-        <div class="stat-value" style="font-size:1.4rem;">${{ totals.open_balance_total|floatformat:2 }}</div>
+        <div class="stat-value" style="font-size:1.4rem;">${{ totals.open_balance_total|floatformat:2|intcomma }}</div>
     </div>
 </div>
 
@@ -47,7 +48,7 @@
                     <td>{% if row.review_needed %}Needs review{% else %}OK{% endif %}</td>
                     <td>{% if row.next_issue_date %}{{ row.next_issue_date|date:"m/d/Y" }}{% else %}-{% endif %}</td>
                     <td>{{ row.next_billing_period }}</td>
-                    <td>${{ row.open_balance|floatformat:2 }}</td>
+                    <td>${{ row.open_balance|floatformat:2|intcomma }}</td>
                     <td><a href="{{ row.statement_url }}">History</a> / <a href="{{ row.quick_payment_url }}">Add Payment</a></td>
                 </tr>
             {% empty %}

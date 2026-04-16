@@ -1,10 +1,11 @@
 {% extends "portal/base.html" %}
+{% load humanize %}
 {% block content %}
 <div class="grid cards-4">
-    <div class="card"><div class="stat-label">Current</div><div class="stat-value">${{ totals.current }}</div></div>
-    <div class="card"><div class="stat-label">1 Term Overdue</div><div class="stat-value">${{ totals.term_1 }}</div></div>
-    <div class="card"><div class="stat-label">2 Terms Overdue</div><div class="stat-value">${{ totals.term_2 }}</div></div>
-    <div class="card"><div class="stat-label">3+ Terms Overdue</div><div class="stat-value">${{ totals.term_3_plus }}</div></div>
+    <div class="card"><div class="stat-label">Current</div><div class="stat-value">${{ totals.current|floatformat:2|intcomma }}</div></div>
+    <div class="card"><div class="stat-label">1 Term Overdue</div><div class="stat-value">${{ totals.term_1|floatformat:2|intcomma }}</div></div>
+    <div class="card"><div class="stat-label">2 Terms Overdue</div><div class="stat-value">${{ totals.term_2|floatformat:2|intcomma }}</div></div>
+    <div class="card"><div class="stat-label">3+ Terms Overdue</div><div class="stat-value">${{ totals.term_3_plus|floatformat:2|intcomma }}</div></div>
 </div>
 
 <div class="card" style="margin-top:18px;">
@@ -26,11 +27,11 @@
                 <tr>
                     <td>{{ row.customer.name }}</td>
                     <td>{{ row.customer.account_number }}</td>
-                    <td>${{ row.current }}</td>
-                    <td>${{ row.term_1 }}</td>
-                    <td>${{ row.term_2 }}</td>
-                    <td>${{ row.term_3_plus }}</td>
-                    <td>${{ row.total }}</td>
+                    <td>${{ row.current|floatformat:2|intcomma }}</td>
+                    <td>${{ row.term_1|floatformat:2|intcomma }}</td>
+                    <td>${{ row.term_2|floatformat:2|intcomma }}</td>
+                    <td>${{ row.term_3_plus|floatformat:2|intcomma }}</td>
+                    <td>${{ row.total|floatformat:2|intcomma }}</td>
                 </tr>
             {% empty %}
                 <tr><td colspan="7">No balances found.</td></tr>

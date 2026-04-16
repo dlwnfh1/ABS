@@ -1,10 +1,11 @@
 {% extends "portal/base.html" %}
+{% load humanize %}
 {% block content %}
 <div class="grid cards-4">
     <div class="card"><div class="stat-label">Ready</div><div class="stat-value">{{ totals.ready }}</div></div>
     <div class="card"><div class="stat-label">Due in 15 Days</div><div class="stat-value">{{ totals.due_in_15 }}</div></div>
     <div class="card"><div class="stat-label">Due in 30 Days</div><div class="stat-value">{{ totals.due_in_30 }}</div></div>
-    <div class="card"><div class="stat-label">Projected Charges</div><div class="stat-value">${{ totals.projected_amount }}</div></div>
+    <div class="card"><div class="stat-label">Projected Charges</div><div class="stat-value">${{ totals.projected_amount|floatformat:2|intcomma }}</div></div>
 </div>
 
 <div class="card" style="margin-top:18px;">
@@ -31,8 +32,8 @@
                     <td>{{ row.status }}</td>
                     <td>{{ row.issue_date|date:"m/d/Y" }}</td>
                     <td>{{ row.period_start|date:"m/d/Y" }} - {{ row.period_end|date:"m/d/Y" }}</td>
-                    <td>${{ row.billing_amount }}</td>
-                    <td>${{ row.open_balance }}</td>
+                    <td>${{ row.billing_amount|floatformat:2|intcomma }}</td>
+                    <td>${{ row.open_balance|floatformat:2|intcomma }}</td>
                 </tr>
             {% empty %}
                 <tr><td colspan="8">No upcoming billing customers.</td></tr>

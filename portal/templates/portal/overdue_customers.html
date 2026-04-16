@@ -1,9 +1,10 @@
 {% extends "portal/base.html" %}
+{% load humanize %}
 {% block content %}
 <div class="grid cards-4">
     <div class="card"><div class="stat-label">Customers</div><div class="stat-value">{{ totals.customer_count }}</div></div>
     <div class="card"><div class="stat-label">Overdue Invoices</div><div class="stat-value">{{ totals.overdue_invoices }}</div></div>
-    <div class="card"><div class="stat-label">Overdue Total</div><div class="stat-value">${{ totals.overdue_total }}</div></div>
+    <div class="card"><div class="stat-label">Overdue Total</div><div class="stat-value">${{ totals.overdue_total|floatformat:2|intcomma }}</div></div>
     <div class="card"><div class="stat-label">Highest Terms Past Due</div><div class="stat-value">{{ totals.max_terms_overdue }}</div></div>
 </div>
 
@@ -29,8 +30,8 @@
                     <td>{{ row.invoice_count }}</td>
                     <td>{{ row.oldest_due_date|date:"m/d/Y" }}</td>
                     <td>{{ row.max_terms_overdue }}</td>
-                    <td>${{ row.overdue_total }}</td>
-                    <td>${{ row.open_total }}</td>
+                    <td>${{ row.overdue_total|floatformat:2|intcomma }}</td>
+                    <td>${{ row.open_total|floatformat:2|intcomma }}</td>
                 </tr>
             {% empty %}
                 <tr><td colspan="7">No overdue customers.</td></tr>
