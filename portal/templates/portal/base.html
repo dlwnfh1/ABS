@@ -183,22 +183,22 @@
         {% endif %}
         {% if unprinted_batch_count > 0 %}
             <div class="action-alert dispatch">
-                <div class="alert-badge">Action Needed</div>
+                <div class="alert-badge">Action Needed<br>(발송 필요)</div>
                 <div>
-                    <div class="alert-title">Invoice PDFs are ready to dispatch.</div>
-                    <div class="alert-detail">Current unprinted invoices: {{ unprinted_invoice_count }} / batches: {{ unprinted_batch_count }}</div>
+                    <div class="alert-title">발송할 인보이스 PDF가 준비되었습니다.</div>
+                    <div class="alert-detail">현재 미출력 인보이스 {{ unprinted_invoice_count }}개 / 배치 {{ unprinted_batch_count }}건</div>
                 </div>
-                <a class="alert-action" href="{% url 'portal:saved_invoice_list' %}?printed_scope=unprinted">Open Invoice Dispatch</a>
+                <a class="alert-action" href="{% url 'portal:saved_invoice_list' %}?printed_scope=unprinted">인보이스 발송 화면 열기</a>
             </div>
         {% endif %}
         {% if auto_ach_review_count > 0 %}
             <div class="action-alert ach">
-                <div class="alert-badge">ACH Review</div>
+                <div class="alert-badge">ACH Review<br>(페이먼 확인)</div>
                 <div>
-                    <div class="alert-title">Auto ACH payments should be reviewed.</div>
-                    <div class="alert-detail">Customer(s): {{ auto_ach_review_summary }}</div>
+                    <div class="alert-title">자동 ACH 페이먼 확인이 필요합니다.</div>
+                    <div class="alert-detail">대상 고객: {{ auto_ach_review_summary }}</div>
                 </div>
-                <a class="alert-action" href="{% url 'portal:auto_ach_review' %}">Open Auto ACH Review</a>
+                <a class="alert-action" href="{% url 'portal:auto_ach_review' %}">ACH 확인 리포트 열기</a>
             </div>
         {% endif %}
         {% block content %}{% endblock %}
