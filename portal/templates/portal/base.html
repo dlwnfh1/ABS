@@ -55,21 +55,71 @@
         .message.error { background: #fee2e2; color: #991b1b; }
         .message.warning { background: #fef3c7; color: #92400e; }
         .message.info { background: #dbeafe; color: #1d4ed8; }
-        .dispatch-alert {
+        .action-alert {
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            gap: 14px;
+            align-items: center;
             margin-bottom: 18px;
-            padding: 14px 18px;
-            border-radius: 16px;
-            border: 1px solid #f59e0b;
-            background: #fff7ed;
-            color: #9a3412;
+            padding: 16px 18px;
+            border-radius: 20px;
             font-weight: 800;
-            animation: dispatchPulse 1.3s ease-in-out infinite;
+            box-shadow: 0 14px 32px rgba(28, 58, 92, .10);
+            animation: actionPulse 2.4s ease-in-out infinite;
         }
-        .dispatch-alert a { color: #9a3412; text-decoration: underline; }
-        @keyframes dispatchPulse {
-            0% { opacity: 1; }
-            50% { opacity: .72; }
-            100% { opacity: 1; }
+        .action-alert.dispatch {
+            border: 1px solid #f97316;
+            background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%);
+            color: #9a3412;
+            --pulse-shadow: rgba(249, 115, 22, .36);
+        }
+        .action-alert.ach {
+            border: 1px solid #2563eb;
+            background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+            color: #1e3a8a;
+            --pulse-shadow: rgba(37, 99, 235, .30);
+        }
+        .alert-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 112px;
+            padding: 8px 10px;
+            border-radius: 999px;
+            font-size: .76rem;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+            color: #fff;
+            white-space: nowrap;
+        }
+        .dispatch .alert-badge { background: #ea580c; }
+        .ach .alert-badge { background: #1d4ed8; }
+        .alert-title { font-size: 1rem; margin-bottom: 3px; }
+        .alert-detail { font-weight: 700; opacity: .90; }
+        .alert-action {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 999px;
+            padding: 10px 14px;
+            font-weight: 900;
+            border: 1px solid rgba(255,255,255,.55);
+            background: rgba(255,255,255,.78);
+            color: inherit;
+            white-space: nowrap;
+        }
+        .alert-action:hover { background: #fff; }
+        @keyframes actionPulse {
+            0%, 100% {
+                transform: translateY(0);
+                filter: brightness(1);
+                box-shadow: 0 14px 32px rgba(28, 58, 92, .10), 0 0 0 0 var(--pulse-shadow);
+            }
+            50% {
+                transform: translateY(-2px);
+                filter: brightness(1.08);
+                box-shadow: 0 18px 38px rgba(28, 58, 92, .14), 0 0 0 6px var(--pulse-shadow);
+            }
         }
         .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
         .form-grid .full { grid-column: 1 / -1; }
@@ -79,45 +129,19 @@
         .report-link { display: block; padding: 18px; background: var(--panel); border-radius: 18px; border: 1px solid var(--line); color: inherit; }
         .report-link h3 { margin: 0 0 8px; }
         .mono { font-family: Consolas, monospace; }
-        .pagination {
-            display:flex;
-            gap:10px;
-            align-items:center;
-            justify-content:flex-end;
-            flex-wrap:wrap;
-            margin-top:14px;
-        }
+        .pagination { display:flex; gap:10px; align-items:center; justify-content:flex-end; flex-wrap:wrap; margin-top:14px; }
         .pagination .page-info { color: var(--muted); font-weight: 600; }
-        .pagination .page-links {
-            display:flex;
-            gap:6px;
-            flex-wrap:wrap;
-            align-items:center;
+        .pagination .page-links { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+        .pagination .page-link { display:inline-flex; align-items:center; justify-content:center; min-width:36px; min-height:36px; padding:0 10px; border-radius:10px; border:1px solid var(--line); background:#fff; color:var(--ink); font-weight:700; }
+        .pagination .page-link.active { background: var(--accent); color:#fff; border-color: var(--accent); }
+        .pagination .page-ellipsis { color: var(--muted); padding: 0 2px; font-weight: 700; }
+        @media (max-width: 1000px) {
+            .shell { grid-template-columns: 1fr; }
+            .sidebar { padding-bottom: 8px; }
+            .row, .cards-3, .cards-4, .report-links, .form-grid { grid-template-columns: 1fr; }
+            .action-alert { grid-template-columns: 1fr; }
+            .alert-badge, .alert-action { width: fit-content; }
         }
-        .pagination .page-link {
-            display:inline-flex;
-            align-items:center;
-            justify-content:center;
-            min-width:36px;
-            min-height:36px;
-            padding:0 10px;
-            border-radius:10px;
-            border:1px solid var(--line);
-            background:#fff;
-            color:var(--ink);
-            font-weight:700;
-        }
-        .pagination .page-link.active {
-            background: var(--accent);
-            color:#fff;
-            border-color: var(--accent);
-        }
-        .pagination .page-ellipsis {
-            color: var(--muted);
-            padding: 0 2px;
-            font-weight: 700;
-        }
-        @media (max-width: 1000px) { .shell { grid-template-columns: 1fr; } .sidebar { padding-bottom: 8px; } .row, .cards-3, .cards-4, .report-links, .form-grid { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
@@ -137,9 +161,9 @@
             {% endfor %}
         </nav>
         <div class="sidebar-footer">
-            로그인: {{ request.user.get_username }}<br>
-            <a href="{% url 'portal:logout' %}">로그아웃</a><br>
-            <a href="/admin/">관리자 페이지</a>
+            Login: {{ request.user.get_username }}<br>
+            <a href="{% url 'portal:logout' %}">Logout</a><br>
+            <a href="/admin/">Admin Page</a>
         </div>
     </aside>
     <main class="main">
@@ -158,15 +182,23 @@
             </div>
         {% endif %}
         {% if unprinted_batch_count > 0 %}
-            <div class="dispatch-alert">
-                발송할 인보이스 PDF가 준비되었습니다. 현재 미출력 인보이스 {{ unprinted_invoice_count }}개 (배치 {{ unprinted_batch_count }}건).
-                <a href="{% url 'portal:saved_invoice_list' %}?printed_scope=unprinted">인보이스 발송 화면 열기</a>
+            <div class="action-alert dispatch">
+                <div class="alert-badge">Action Needed</div>
+                <div>
+                    <div class="alert-title">Invoice PDFs are ready to dispatch.</div>
+                    <div class="alert-detail">Current unprinted invoices: {{ unprinted_invoice_count }} / batches: {{ unprinted_batch_count }}</div>
+                </div>
+                <a class="alert-action" href="{% url 'portal:saved_invoice_list' %}?printed_scope=unprinted">Open Invoice Dispatch</a>
             </div>
         {% endif %}
         {% if auto_ach_review_count > 0 %}
-            <div class="message warning">
-                Auto ACH payments should be reviewed for: {{ auto_ach_review_summary }}.
-                <a href="{% url 'portal:auto_ach_review' %}">Open Auto ACH Review</a>
+            <div class="action-alert ach">
+                <div class="alert-badge">ACH Review</div>
+                <div>
+                    <div class="alert-title">Auto ACH payments should be reviewed.</div>
+                    <div class="alert-detail">Customer(s): {{ auto_ach_review_summary }}</div>
+                </div>
+                <a class="alert-action" href="{% url 'portal:auto_ach_review' %}">Open Auto ACH Review</a>
             </div>
         {% endif %}
         {% block content %}{% endblock %}
@@ -174,4 +206,3 @@
 </div>
 </body>
 </html>
-
