@@ -183,7 +183,7 @@
         {% endif %}
         {% if unprinted_batch_count > 0 %}
             <div class="action-alert dispatch">
-                <div class="alert-badge">Action Needed<br>(발송 필요)</div>
+                <div class="alert-badge">Action Needed</div>
                 <div>
                     <div class="alert-title">발송할 인보이스 PDF가 준비되었습니다.</div>
                     <div class="alert-detail">현재 미출력 인보이스 {{ unprinted_invoice_count }}개 / 배치 {{ unprinted_batch_count }}건</div>
@@ -193,7 +193,7 @@
         {% endif %}
         {% if auto_ach_review_count > 0 %}
             <div class="action-alert ach">
-                <div class="alert-badge">ACH Review<br>(페이먼 확인)</div>
+                <div class="alert-badge">ACH Review</div>
                 <div>
                     <div class="alert-title">자동 ACH 페이먼 확인이 필요합니다.</div>
                     <div class="alert-detail">대상 고객: {{ auto_ach_review_summary }}</div>
