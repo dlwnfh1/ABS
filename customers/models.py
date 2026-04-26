@@ -137,15 +137,23 @@ class Customer(models.Model):
             return self.first_billing_date - timedelta(days=15)
         return None
 
+    def next_expected_billing_date(self):
+        latest_invoice = next(iter(self._nonvoid_invoices_cache()), None)
+        if latest_invoice:
+            return latest_invoice.next_period_start
+        if self.is_active and self.can_generate_initial_invoice():
+            return self.first_billing_date
+        return None
+
     def auto_ach_review_needed(self, as_of_date=None) -> bool:
         as_of_date = as_of_date or timezone.localdate()
         if not self.is_active or not self.auto_ach:
             return False
-        issue_date = self.next_expected_issue_date()
-        if not issue_date:
+        next_billing_date = self.next_expected_billing_date()
+        if not next_billing_date:
             return False
-        review_start = issue_date.replace(day=1)
-        if not (review_start <= as_of_date < issue_date):
+        review_start = next_billing_date - timedelta(days=30)
+        if as_of_date < review_start:
             return False
         return self.open_balance_as_of(as_of_date) > Decimal("0.00")
 
