@@ -162,6 +162,7 @@
         </nav>
         <div class="sidebar-footer">
             Login: {{ request.user.get_username }}<br>
+            <a href="{% url 'portal:password_change' %}">Change Password</a><br>
             <a href="{% url 'portal:logout' %}">Logout</a><br>
             <a href="/admin/">Admin Page</a>
         </div>

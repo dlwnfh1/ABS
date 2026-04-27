@@ -1,0 +1,11 @@
+{% extends "admin/change_form.html" %}
+{% load admin_urls %}
+
+{% block object-tools-items %}
+    {% if change and not is_popup and original %}
+        <li>
+            <a href="{% url 'admin_user_reset_password' original.pk %}">Reset Password</a>
+        </li>
+    {% endif %}
+    {{ block.super }}
+{% endblock %}

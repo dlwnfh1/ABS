@@ -18,6 +18,8 @@ from django.contrib import admin
 from django.urls import include, path
 from django.views.generic import RedirectView
 
+from portal.admin_views import reset_user_password_view
+
 admin.site.site_header = "NEO ALARM BILLING SYSTEM"
 admin.site.site_title = "NEO ALARM BILLING SYSTEM"
 admin.site.index_title = "NEO ALARM BILLING SYSTEM"
@@ -25,5 +27,6 @@ admin.site.index_title = "NEO ALARM BILLING SYSTEM"
 urlpatterns = [
     path("", RedirectView.as_view(pattern_name="portal:dashboard", permanent=False)),
     path("app/", include("portal.urls")),
+    path("admin-tools/users/<int:user_id>/reset-password/", admin.site.admin_view(reset_user_password_view), name="admin_user_reset_password"),
     path('admin/', admin.site.urls),
 ]
