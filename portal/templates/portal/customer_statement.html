@@ -134,7 +134,7 @@
                         <td class="mono">{{ invoice.invoice_number }}</td>
                         <td>{{ invoice.period_start|date:"m/d/Y" }} - {{ invoice.period_end|date:"m/d/Y" }}</td>
                         <td>${{ invoice.total_due }}</td>
-                        <td>{{ invoice.get_status_display }}</td>
+                        <td>{{ invoice.display_status }}</td>
                         <td>
                             {% if invoice.saved_pdf_url %}
                                 <a href="{{ invoice.saved_pdf_url }}" target="_blank">View Saved PDF</a>

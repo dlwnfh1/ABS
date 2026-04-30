@@ -289,7 +289,7 @@
                             <td>{{ invoice.period_start|date:"m/d/Y" }} - {{ invoice.period_end|date:"m/d/Y" }}</td>
                             <td class="date">{{ invoice.issue_date|date:"m/d/Y" }}</td>
                             <td class="date">{{ invoice.due_date|date:"m/d/Y" }}</td>
-                            <td class="status">{{ invoice.get_status_display }}</td>
+                            <td class="status">{{ invoice.display_status }}</td>
                             <td class="amount">${{ invoice.total_due|floatformat:2 }}</td>
                         </tr>
                     {% endfor %}

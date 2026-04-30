@@ -82,6 +82,55 @@ class BillingWorkflowTests(TestCase):
             "Last Payment was $50.00 with Check #CHK-1 on the date of 03-03-2026",
         )
 
+    def test_paid_prior_invoice_does_not_zero_out_next_invoice(self):
+        first_invoice = Invoice.objects.get(customer=self.customer, auto_generated=False)
+        next_invoice = first_invoice.generate_next_invoice()
+
+        Payment.objects.create(
+            customer=self.customer,
+            amount=Decimal("110.00"),
+            payment_date=date(2026, 3, 3),
+            method=Payment.METHOD_CHECK,
+            reference_number="CHK-FULL",
+        )
+
+        first_invoice.refresh_from_db()
+        next_invoice.refresh_from_db()
+
+        self.assertEqual(first_invoice.status, Invoice.STATUS_PAID)
+        self.assertEqual(first_invoice.total_due, Decimal("0.00"))
+        self.assertEqual(next_invoice.partial_payment, Decimal("0.00"))
+        self.assertEqual(next_invoice.subtotal, Decimal("100.00"))
+        self.assertEqual(next_invoice.tax_amount, Decimal("10.00"))
+        self.assertEqual(next_invoice.total_due, Decimal("110.00"))
+        self.assertEqual(next_invoice.status, Invoice.STATUS_ISSUED)
+
+    def test_display_status_reflects_invoice_payment_for_current_period(self):
+        first_invoice = Invoice.objects.get(customer=self.customer, auto_generated=False)
+        second_invoice = first_invoice.generate_next_invoice()
+        third_invoice = second_invoice.generate_next_invoice()
+
+        Payment.objects.create(
+            customer=self.customer,
+            amount=Decimal("110.00"),
+            payment_date=date(2026, 3, 3),
+            method=Payment.METHOD_CHECK,
+            reference_number="CHK-ONE",
+        )
+        Payment.objects.create(
+            customer=self.customer,
+            amount=Decimal("110.00"),
+            payment_date=date(2026, 6, 3),
+            method=Payment.METHOD_CHECK,
+            reference_number="CHK-TWO",
+        )
+
+        second_invoice.refresh_from_db()
+        third_invoice.refresh_from_db()
+
+        self.assertEqual(second_invoice.display_status, "Paid")
+        self.assertEqual(third_invoice.display_status, "Issued")
+
     def test_payment_auto_allocates_oldest_open_invoices(self):
         first_invoice = Invoice.objects.get(customer=self.customer, auto_generated=False)
         next_invoice = first_invoice.generate_next_invoice()

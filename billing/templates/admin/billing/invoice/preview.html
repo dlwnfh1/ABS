@@ -137,7 +137,7 @@
                 <div class="invoice-meta-title">Invoice Details</div>
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px 14px;">
                     <div><div class="invoice-meta-label">Invoice Number</div><div class="invoice-meta-value">{{ invoice.invoice_number }}</div></div>
-                    <div><div class="invoice-meta-label">Status</div><div class="invoice-meta-value">{{ invoice.get_status_display }}</div></div>
+                    <div><div class="invoice-meta-label">Status</div><div class="invoice-meta-value">{{ invoice.display_status }}</div></div>
                     <div><div class="invoice-meta-label">Issue Date</div><div class="invoice-meta-value">{{ invoice.issue_date|date:"m/d/Y" }}</div></div>
                     <div><div class="invoice-meta-label">Due Date</div><div class="invoice-meta-value">{{ invoice.due_date|date:"m/d/Y" }}</div></div>
                 </div>

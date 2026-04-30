@@ -203,7 +203,7 @@
                     <td class="num">${{ invoice.subtotal|floatformat:2 }}</td>
                     <td class="num">${{ invoice.tax_amount|floatformat:2 }}</td>
                     <td class="num">${{ invoice.total_due|floatformat:2 }}</td>
-                    <td>{{ invoice.get_status_display }}</td>
+                    <td>{{ invoice.display_status }}</td>
                 </tr>
                 {% empty %}
                 <tr>

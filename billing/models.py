@@ -77,6 +77,23 @@ class Invoice(models.Model):
         return (self.current_period_amount + self.current_period_tax).quantize(Decimal("0.01"))
 
     @property
+    def display_status(self) -> str:
+        if self.status == self.STATUS_VOID:
+            return "Void"
+        if self.status == self.STATUS_DRAFT:
+            return "Draft"
+
+        current_total = self.current_period_total
+        allocated_to_self = self.allocated_amount_as_of()
+        if current_total <= Decimal("0.00"):
+            return self.get_status_display()
+        if allocated_to_self >= current_total:
+            return "Paid"
+        if allocated_to_self > Decimal("0.00"):
+            return "Partially Paid"
+        return "Issued"
+
+    @property
     def last_payment(self):
         return self.customer.payments.filter(is_voided=False).order_by("-payment_date", "-id").first()
 
@@ -136,10 +153,12 @@ class Invoice(models.Model):
         )
         prior_base_paid = Decimal("0.00")
         for prior_invoice in prior_invoices:
-            prior_base_paid += prior_invoice.base_paid_as_of(
-                as_of_date=self.issue_date,
-                exclude_payment_id=exclude_payment_id,
-            )
+            outstanding = prior_invoice.outstanding_amount_as_of(self.issue_date)
+            if outstanding > Decimal("0.00"):
+                prior_base_paid += prior_invoice.base_paid_as_of(
+                    as_of_date=self.issue_date,
+                    exclude_payment_id=exclude_payment_id,
+                )
 
         subtotal = (Decimal(line_total) - prior_base_paid).quantize(Decimal("0.01"))
         if subtotal < Decimal("0.00"):
