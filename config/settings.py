@@ -146,7 +146,7 @@ MEDIA_ROOT = BASE_DIR / 'media'
 
 DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'neoalarmoffice@gmail.com')
 ABS_ADMIN_ALERT_EMAILS = _csv_env_list('ABS_ADMIN_ALERT_EMAILS') or ['joorolee1@gmail.com']
-ABS_BILLING_ALERT_EMAILS = _csv_env_list('ABS_BILLING_ALERT_EMAILS') or ['neoalarm@gmail.com']
+ABS_BILLING_ALERT_EMAILS = _csv_env_list('ABS_BILLING_ALERT_EMAILS') or ['joorolee1@gmail.com']
 
 LOGIN_URL = "/app/login/"
 LOGIN_REDIRECT_URL = "/app/"

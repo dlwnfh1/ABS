@@ -38,7 +38,7 @@ class BasePortalCustomerForm(forms.Form):
     )
     billing_term = forms.ChoiceField(choices=Customer.BILLING_TERM_CHOICES, initial=3)
     auto_ach = forms.BooleanField(required=False, initial=False)
-    tax_rate = forms.DecimalField(max_digits=5, decimal_places=2, initial="0.00")
+    tax_rate = forms.DecimalField(max_digits=6, decimal_places=3, initial="0.000")
     first_billing_date = forms.DateField(
         required=False,
         widget=forms.DateInput(attrs={"type": "date"}),
