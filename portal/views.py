@@ -24,6 +24,7 @@ from billing.pdf_utils import (
     list_saved_invoice_pdf_records,
     merge_saved_invoice_pdf_records,
     logo_symbol_data_uri,
+    portal_logo_data_uri,
     render_invoice_pdf_bytes,
 )
 from customers.models import Customer, Service
@@ -97,7 +98,7 @@ def _portal_context(request, **extra):
         "unprinted_invoice_count": unprinted_invoice_count,
         "auto_ach_review_count": auto_ach_review_count,
         "auto_ach_review_summary": auto_ach_review_summary,
-        "logo_symbol_data_uri": logo_symbol_data_uri(),
+        "logo_symbol_data_uri": portal_logo_data_uri(),
         **extra,
     }
 

@@ -60,6 +60,14 @@ def logo_symbol_data_uri():
     return f"data:image/png;base64,{encoded}"
 
 
+def portal_logo_data_uri():
+    portal_logo_path = Path(__file__).resolve().parent.parent / "portal_logo.png"
+    if portal_logo_path.exists():
+        encoded = base64.b64encode(portal_logo_path.read_bytes()).decode("ascii")
+        return f"data:image/png;base64,{encoded}"
+    return logo_symbol_data_uri()
+
+
 def build_invoice_pdf_context(invoice):
     today = timezone.localdate()
     latest_issued_invoice = (

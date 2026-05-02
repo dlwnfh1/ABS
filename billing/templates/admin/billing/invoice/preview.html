@@ -51,6 +51,7 @@
     .remit-field { border-bottom: 1px solid #c7d2dc; padding-bottom: 6px; }
     .remit-label, .invoice-meta-label { color: #65788c; text-transform: uppercase; font-size: 10px; font-weight: 700; margin-bottom: 2px; }
     .remit-value, .invoice-meta-value { color: var(--invoice-navy); font-size: 17px; font-weight: 900; line-height: 1.15; }
+    .remit-value.wrap-two-lines { font-size: 14px; line-height: 1.02; white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
     .invoice-meta-panel { background: linear-gradient(180deg, #16324f 0%, #214d73 100%); color: #fff; }
     .invoice-meta-title, .invoice-meta-label { color: rgba(255,255,255,0.78); }
     .invoice-meta-value { color: #fff; }
@@ -110,7 +111,7 @@
                     <div class="card-title">Return This Slip With Payment</div>
                     <div class="card-text">Include this top portion in the envelope with your check payment.</div>
                     <div class="remit-fields">
-                        <div class="remit-field"><div class="remit-label">Account #</div><div class="remit-value">{{ invoice.customer.account_number }}</div></div>
+                        <div class="remit-field"><div class="remit-label">Account #</div><div class="remit-value wrap-two-lines">{{ invoice.customer.account_number }}</div></div>
                         <div class="remit-field"><div class="remit-label">Invoice #</div><div class="remit-value">{{ invoice.invoice_number }}</div></div>
                         <div class="remit-field"><div class="remit-label">Due Date</div><div class="remit-value">{{ invoice.due_date|date:"m/d/Y" }}</div></div>
                         <div class="remit-field"><div class="remit-label">Amount Due</div><div class="remit-value">${{ current_balance_due|floatformat:2 }}</div></div>
