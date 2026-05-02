@@ -1,4 +1,5 @@
 from django import forms
+from django.core.validators import validate_email
 from django.utils import timezone
 
 from customers.models import Customer, Service, PHONE_NUMBER_VALIDATOR
@@ -36,6 +37,12 @@ class BasePortalCustomerForm(forms.Form):
         error_messages={"invalid": PHONE_NUMBER_VALIDATOR.message},
         widget=forms.TextInput(attrs={"placeholder": "123-456-7890", "inputmode": "tel", "pattern": r"\d{3}-\d{3}-\d{4}"}),
     )
+    invoice_email_to = forms.CharField(max_length=500, required=False)
+    invoice_email_cc = forms.CharField(max_length=500, required=False)
+    invoice_delivery_method = forms.ChoiceField(
+        choices=Customer.DELIVERY_METHOD_CHOICES,
+        initial=Customer.DELIVERY_METHOD_MAIL,
+    )
     billing_term = forms.ChoiceField(choices=Customer.BILLING_TERM_CHOICES, initial=3)
     auto_ach = forms.BooleanField(required=False, initial=False)
     tax_rate = forms.DecimalField(max_digits=6, decimal_places=3, initial="0.000")
@@ -51,6 +58,41 @@ class BasePortalCustomerForm(forms.Form):
     billing_amount = forms.DecimalField(max_digits=10, decimal_places=2, min_value=0)
     service_billing_status = forms.ChoiceField(choices=Service.BILLING_STATUS_CHOICES, initial=Service.BILLING_STATUS_BILLABLE)
     service_is_active = forms.BooleanField(required=False, initial=True)
+
+    @staticmethod
+    def _split_email_list(raw_value):
+        seen = set()
+        emails = []
+        for email in (raw_value or "").split(","):
+            normalized = email.strip().lower()
+            if not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            emails.append(normalized)
+        return emails
+
+    def clean(self):
+        cleaned_data = super().clean()
+        delivery_method = cleaned_data.get("invoice_delivery_method")
+        invoice_email_to = (cleaned_data.get("invoice_email_to") or "").strip()
+        invoice_email_cc = (cleaned_data.get("invoice_email_cc") or "").strip()
+        to_list = self._split_email_list(invoice_email_to)
+        cc_list = self._split_email_list(invoice_email_cc)
+        for email in to_list:
+            try:
+                validate_email(email)
+            except forms.ValidationError:
+                self.add_error("invoice_email_to", f"Invalid email address: {email}")
+        for email in cc_list:
+            try:
+                validate_email(email)
+            except forms.ValidationError:
+                self.add_error("invoice_email_cc", f"Invalid email address: {email}")
+        if delivery_method in {Customer.DELIVERY_METHOD_EMAIL, Customer.DELIVERY_METHOD_BOTH} and not to_list:
+            self.add_error("invoice_email_to", "Invoice To email is required when delivery method includes email.")
+        cleaned_data["invoice_email_to"] = ", ".join(to_list)
+        cleaned_data["invoice_email_cc"] = ", ".join(cc_list)
+        return cleaned_data
 
 
 class PortalCustomerCreateForm(BasePortalCustomerForm):

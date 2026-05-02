@@ -21,6 +21,16 @@ class Customer(models.Model):
         (9, "9 Months"),
         (12, "12 Months"),
     )
+    DELIVERY_METHOD_MAIL = "mail"
+    DELIVERY_METHOD_EMAIL = "email"
+    DELIVERY_METHOD_BOTH = "both"
+    DELIVERY_METHOD_DO_NOT_SEND = "none"
+    DELIVERY_METHOD_CHOICES = (
+        (DELIVERY_METHOD_MAIL, "Mail"),
+        (DELIVERY_METHOD_EMAIL, "Email"),
+        (DELIVERY_METHOD_BOTH, "Mail + Email"),
+        (DELIVERY_METHOD_DO_NOT_SEND, "Do Not Send"),
+    )
 
     name = models.CharField(max_length=255)
     account_number = models.CharField(max_length=50, unique=True)
@@ -31,6 +41,13 @@ class Customer(models.Model):
         max_length=12,
         blank=True,
         validators=[PHONE_NUMBER_VALIDATOR],
+    )
+    invoice_email_to = models.TextField(blank=True)
+    invoice_email_cc = models.TextField(blank=True)
+    invoice_delivery_method = models.CharField(
+        max_length=10,
+        choices=DELIVERY_METHOD_CHOICES,
+        default=DELIVERY_METHOD_MAIL,
     )
     billing_term = models.PositiveSmallIntegerField(choices=BILLING_TERM_CHOICES, default=3)
     auto_ach = models.BooleanField(default=False)
@@ -96,6 +113,20 @@ class Customer(models.Model):
     def current_billing_amount(self) -> Decimal:
         amount = sum((service.billing_amount for service in self._billable_services_cache()), Decimal("0.00"))
         return Decimal(amount).quantize(Decimal("0.01"))
+
+    @property
+    def current_billing_description(self) -> str:
+        service_names = []
+        for service in self._billable_services_cache():
+            name = (service.service_name or "").strip()
+            if name and name not in service_names:
+                service_names.append(name)
+
+        if not service_names:
+            return "Alarm Monitoring Service"
+        if len(service_names) == 1:
+            return service_names[0]
+        return "Monitoring Services"
 
     def can_generate_initial_invoice(self) -> bool:
         return bool(self.first_billing_date and self.is_active and self._billable_services_cache())

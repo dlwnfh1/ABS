@@ -1,6 +1,5 @@
 from datetime import date
 from decimal import Decimal
-
 from django.test import TestCase
 from django.utils import timezone
 
@@ -51,6 +50,8 @@ class BillingWorkflowTests(TestCase):
         self.assertEqual(items[0].amount, Decimal("100.00"))
         self.assertEqual(items[1].line_type, InvoiceItem.LINE_CURRENT_PERIOD)
         self.assertEqual(items[1].amount, Decimal("100.00"))
+        self.assertEqual(items[0].description, "Internet")
+        self.assertEqual(items[1].description, "Internet")
         self.assertEqual(next_invoice.partial_payment, Decimal("0.00"))
         self.assertEqual(next_invoice.subtotal, Decimal("200.00"))
         self.assertEqual(next_invoice.tax_amount, Decimal("20.00"))

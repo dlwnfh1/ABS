@@ -136,16 +136,40 @@ def build_invoice_pdf_context(invoice):
     }
 
 
-def render_invoice_pdf_bytes(invoice):
+def render_template_pdf_bytes(template_name, context):
     from django.template.loader import render_to_string
 
-    html = render_to_string("admin/billing/invoice/pdf.html", build_invoice_pdf_context(invoice))
+    html = render_to_string(template_name, context)
     pdf_buffer = BytesIO()
     ensure_md5_compat()
     pdf = pisa.CreatePDF(html, dest=pdf_buffer)
     if pdf.err:
         return None
     return pdf_buffer.getvalue()
+
+
+def merge_pdf_bytes_documents(pdf_documents):
+    writer = PdfWriter()
+    merged_count = 0
+    for pdf_bytes in pdf_documents:
+        if not pdf_bytes:
+            continue
+        reader = PdfReader(BytesIO(pdf_bytes))
+        for page in reader.pages:
+            writer.add_page(page)
+        merged_count += 1
+
+    if not merged_count:
+        return b""
+
+    output = BytesIO()
+    writer.write(output)
+    writer.close()
+    return output.getvalue()
+
+
+def render_invoice_pdf_bytes(invoice):
+    return render_template_pdf_bytes("admin/billing/invoice/pdf.html", build_invoice_pdf_context(invoice))
 
 
 def get_invoice_output_base_folder():
@@ -274,6 +298,8 @@ def list_saved_invoice_pdf_records(query="", account_number=None, latest_only=Fa
             "relative_path": saved.relative_path.replace("\\", "/"),
             "filename": Path(saved.absolute_path).name,
             "generated_date": saved.generated_date.strftime("%Y-%m-%d"),
+            "customer": saved.customer,
+            "invoice": saved.invoice,
             "account_number": saved.account_number,
             "customer_label": saved.customer_name,
             "invoice_number": saved.invoice_number,

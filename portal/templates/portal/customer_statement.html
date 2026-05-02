@@ -48,7 +48,13 @@
 <div class="card" style="margin-top:18px;">
     <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
         <h3 style="margin:0;">Customer Information</h3>
-        <a class="btn btn-secondary" href="{% url 'portal:customer_edit' selected_customer.pk %}">Edit Customer</a>
+        <div class="btn-row" style="margin:0;">
+            <a class="btn btn-secondary" href="{% url 'portal:customer_edit' selected_customer.pk %}">Edit Customer</a>
+            <form method="post" action="{{ resend_invoice_email_url }}" style="display:inline;">
+                {% csrf_token %}
+                <button class="btn btn-secondary" type="submit">Send Invoice Email</button>
+            </form>
+        </div>
     </div>
     <div class="grid cards-4">
         <div>
@@ -60,6 +66,18 @@
         <div>
             <div class="stat-label">Phone Number</div>
             <div>{{ selected_customer.email_address|default:"-" }}</div>
+        </div>
+        <div>
+            <div class="stat-label">Invoice Email (To)</div>
+            <div>{{ selected_customer.invoice_email_to|default:"-" }}</div>
+        </div>
+        <div>
+            <div class="stat-label">Invoice Email (Cc)</div>
+            <div>{{ selected_customer.invoice_email_cc|default:"-" }}</div>
+        </div>
+        <div>
+            <div class="stat-label">Delivery Method</div>
+            <div>{{ selected_customer.get_invoice_delivery_method_display }}</div>
         </div>
         <div>
             <div class="stat-label">Billing Term</div>

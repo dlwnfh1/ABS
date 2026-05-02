@@ -95,6 +95,9 @@ class CustomerAdmin(admin.ModelAdmin):
     list_display = (
         "account_number",
         "name",
+        "invoice_delivery_method",
+        "invoice_email_to",
+        "invoice_email_cc",
         "next_invoice_status",
         "next_invoice_period",
         "open_balance",
@@ -109,6 +112,8 @@ class CustomerAdmin(admin.ModelAdmin):
         "account_number",
         "name",
         "email_address",
+        "invoice_email_to",
+        "invoice_email_cc",
         "billing_address1",
         "billing_address2",
         "services__service_address1",
@@ -243,7 +248,7 @@ class CustomerAdmin(admin.ModelAdmin):
             for customer in queryset
         }
         status_filter = filter_params.get("workflow_status", "all")
-        active_filter = filter_params.get("active_state", "all")
+        active_filter = filter_params.get("active_state", "active")
         term_filter = filter_params.get("term", "all")
 
         if active_filter == "active":
@@ -550,6 +555,9 @@ class CustomerAdmin(admin.ModelAdmin):
                 "billing_address1",
                 "billing_address2",
                 "phone_number",
+                "invoice_email_to",
+                "invoice_email_cc",
+                "invoice_delivery_method",
                 "billing_term",
                 "auto_ach",
                 "tax_rate",
@@ -578,6 +586,9 @@ class CustomerAdmin(admin.ModelAdmin):
                         customer.billing_address1,
                         customer.billing_address2,
                         customer.email_address,
+                        customer.invoice_email_to,
+                        customer.invoice_email_cc,
+                        customer.invoice_delivery_method,
                         customer.billing_term,
                         customer.auto_ach,
                         customer.tax_rate,
@@ -605,6 +616,9 @@ class CustomerAdmin(admin.ModelAdmin):
                 "billing_address1",
                 "billing_address2",
                 "phone_number",
+                "invoice_email_to",
+                "invoice_email_cc",
+                "invoice_delivery_method",
                 "billing_term",
                 "auto_ach",
                 "tax_rate",
@@ -692,6 +706,9 @@ class CustomerAdmin(admin.ModelAdmin):
                     "billing_address1": billing_address1,
                     "billing_address2": (row.get("billing_address2") or "").strip(),
                     "email_address": self._parse_phone_number((row.get("phone_number") or row.get("email_address") or "").strip(), index),
+                    "invoice_email_to": (row.get("invoice_email_to") or row.get("invoice_email") or "").strip(),
+                    "invoice_email_cc": (row.get("invoice_email_cc") or "").strip(),
+                    "invoice_delivery_method": self._parse_invoice_delivery_method((row.get("invoice_delivery_method") or "").strip(), index),
                     "billing_term": billing_term,
                     "auto_ach": self._parse_bool(row.get("auto_ach"), default=False),
                     "tax_rate": self._parse_decimal(row.get("tax_rate"), "tax_rate", index),
@@ -760,6 +777,13 @@ class CustomerAdmin(admin.ModelAdmin):
         valid = {choice[0] for choice in Service.BILLING_STATUS_CHOICES}
         if value not in valid:
             raise ValueError(f"Row {row_number}: service_billing_status must be one of {', '.join(sorted(valid))}.")
+        return value
+
+    def _parse_invoice_delivery_method(self, value, row_number):
+        value = (value or Customer.DELIVERY_METHOD_MAIL).strip().lower()
+        valid = {choice[0] for choice in Customer.DELIVERY_METHOD_CHOICES}
+        if value not in valid:
+            raise ValueError(f"Row {row_number}: invoice_delivery_method must be one of {', '.join(sorted(valid))}.")
         return value
 
     def _parse_required_date(self, value, field_name, row_number):
@@ -834,7 +858,7 @@ class CustomerAdmin(admin.ModelAdmin):
         ]
 
     def _build_active_filters(self, params):
-        current = params.get("active_state", "all")
+        current = params.get("active_state", "active")
         options = [("all", "All"), ("active", "Active"), ("inactive", "Inactive")]
         base_queryset = self.model.objects.all()
         counts = {

@@ -203,7 +203,7 @@ class Invoice(models.Model):
                 InvoiceItem.objects.create(
                     invoice=self,
                     line_type=InvoiceItem.LINE_CARRYOVER,
-                    description=f"Billing Period {prior_invoice.period_start:%m/%d/%y} - {prior_invoice.period_end:%m/%d/%y}",
+                    description=self.customer.current_billing_description,
                     period_start=prior_invoice.period_start,
                     period_end=prior_invoice.period_end,
                     amount=prior_invoice.current_period_amount,
@@ -212,7 +212,7 @@ class Invoice(models.Model):
         InvoiceItem.objects.create(
             invoice=self,
             line_type=InvoiceItem.LINE_CURRENT_PERIOD,
-            description=f"Billing Period {self.period_start:%m/%d/%y} - {self.period_end:%m/%d/%y}",
+            description=self.customer.current_billing_description,
             period_start=self.period_start,
             period_end=self.period_end,
             amount=self.customer.current_billing_amount,

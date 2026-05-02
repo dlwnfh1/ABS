@@ -6,6 +6,7 @@ from decimal import Decimal
 from io import BytesIO
 
 from django.contrib import admin
+from django.contrib import messages
 from django.http import HttpResponse
 from django.shortcuts import redirect
 from django.template.loader import render_to_string
@@ -18,6 +19,7 @@ from billing.models import Invoice, add_months
 from billing.pdf_utils import list_saved_invoice_pdf_records, merge_saved_invoice_pdf_records
 from payments.models import Payment
 from customers.models import Service
+from reports.notifications import send_saved_invoice_emails
 
 from .models import DispatchCenter, InvoiceGenerationBatch, ReportCenter, SystemSetting
 
@@ -77,6 +79,7 @@ class ReportCenterAdmin(admin.ModelAdmin):
             path("saved-invoices/", self.admin_site.admin_view(self.saved_invoices_view), name="reports_reportcenter_saved_invoices"),
             path("saved-invoices/merged/pdf/", self.admin_site.admin_view(self.saved_invoices_merged_pdf_view), name="reports_reportcenter_saved_invoices_merged_pdf"),
             path("saved-invoices/merged/print/", self.admin_site.admin_view(self.saved_invoices_merged_print_view), name="reports_reportcenter_saved_invoices_merged_print"),
+            path("saved-invoices/send-email/", self.admin_site.admin_view(self.saved_invoices_send_email_view), name="reports_reportcenter_saved_invoices_send_email"),
             path("saved-invoices/batch/toggle-printed/", self.admin_site.admin_view(self.saved_invoices_batch_toggle_printed_view), name="reports_reportcenter_saved_invoices_batch_toggle_printed"),
         ]
         return custom_urls + urls
@@ -794,12 +797,14 @@ class ReportCenterAdmin(admin.ModelAdmin):
             printed_scope=printed_scope,
         )
         records = self._prepare_dispatch_records(result["records"])
+        delivery_summary = self._build_dispatch_delivery_summary(records)
         query_string = request.GET.copy()
         context = {
             **self.admin_site.each_context(request),
             "opts": self.model._meta,
             "title": "Invoice Dispatch",
             "records": records,
+            "delivery_summary": delivery_summary,
             "base_folder": result["base_folder"],
             "printed_scope": printed_scope,
             "dispatch_home_url": reverse("admin:reports_dispatchcenter_changelist"),
@@ -856,11 +861,46 @@ class ReportCenterAdmin(admin.ModelAdmin):
             item["show_batch_toggle"] = bool(batch_id) and batch_id not in seen_batches
             item["batch_group_start"] = is_new_batch
             item["batch_group_class"] = f"batch-shade-{1 if shade_index % 2 else 2}"
+            customer = item.get("customer")
+            if customer:
+                item["delivery_method"] = customer.get_invoice_delivery_method_display()
+                item["invoice_email_to"] = customer.invoice_email_to or "-"
+                item["invoice_email_cc"] = customer.invoice_email_cc or "-"
+                item["missing_invoice_email"] = (
+                    customer.invoice_delivery_method in {"email", "both"} and not customer.invoice_email_to
+                )
+            else:
+                item["delivery_method"] = "-"
+                item["invoice_email_to"] = "-"
+                item["invoice_email_cc"] = "-"
+                item["missing_invoice_email"] = False
             if batch_id:
                 seen_batches.add(batch_id)
             last_batch_id = batch_id
             prepared.append(item)
         return prepared
+
+    def _build_dispatch_delivery_summary(self, records):
+        summary = {"mail": 0, "email": 0, "both": 0, "do_not_send": 0, "missing_email": 0}
+        seen_customer_ids = set()
+        for record in records:
+            customer = record.get("customer")
+            if not customer or customer.pk in seen_customer_ids:
+                continue
+            seen_customer_ids.add(customer.pk)
+            if customer.invoice_delivery_method == "mail":
+                summary["mail"] += 1
+            elif customer.invoice_delivery_method == "email":
+                summary["email"] += 1
+                if not customer.invoice_email_to:
+                    summary["missing_email"] += 1
+            elif customer.invoice_delivery_method == "both":
+                summary["both"] += 1
+                if not customer.invoice_email_to:
+                    summary["missing_email"] += 1
+            elif customer.invoice_delivery_method == "none":
+                summary["do_not_send"] += 1
+        return summary
 
     def saved_invoices_merged_pdf_view(self, request):
         records = self._saved_invoice_filtered_records(request)
@@ -909,6 +949,32 @@ class ReportCenterAdmin(admin.ModelAdmin):
             self.message_user(request, f"{batch.label} was marked as printed.")
         else:
             self.message_user(request, f"{batch.label} printed status was cleared.")
+        return redirect(f'{reverse("admin:reports_reportcenter_saved_invoices")}?{query_string}' if query_string else reverse("admin:reports_reportcenter_saved_invoices"))
+
+    def saved_invoices_send_email_view(self, request):
+        query_string = request.GET.urlencode()
+        records = self._saved_invoice_filtered_records(request)
+        result = send_saved_invoice_emails(records)
+        if result["sent_customers"]:
+            self.message_user(
+                request,
+                f'Emailed {result["sent_invoices"]} invoice PDF(s) to {result["sent_customers"]} customer(s).',
+            )
+        if result["missing_email_customers"]:
+            self.message_user(
+                request,
+                f'{result["missing_email_customers"]} customer(s) were skipped because invoice email is missing.',
+                level=messages.WARNING,
+            )
+        if result["skipped_customers"]:
+            self.message_user(
+                request,
+                f'{result["skipped_customers"]} customer(s) were skipped because delivery method is Do Not Send.',
+            )
+        for failure in result["failed"][:5]:
+            self.message_user(request, f"Email send failed: {failure}", level=messages.ERROR)
+        if not result["sent_customers"] and not result["missing_email_customers"] and not result["failed"]:
+            self.message_user(request, "No visible invoice PDFs were eligible for email delivery.", level=messages.WARNING)
         return redirect(f'{reverse("admin:reports_reportcenter_saved_invoices")}?{query_string}' if query_string else reverse("admin:reports_reportcenter_saved_invoices"))
 
 

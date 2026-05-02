@@ -35,6 +35,7 @@ urlpatterns = [
     path("invoices/saved/file/", views.saved_invoice_file_view, name="saved_invoice_file"),
     path("invoices/saved/merged/pdf/", views.saved_invoice_merged_pdf_view, name="saved_invoice_merged_pdf"),
     path("invoices/saved/merged/print/", views.saved_invoice_merged_print_view, name="saved_invoice_merged_print"),
+    path("invoices/saved/send-email/", views.saved_invoice_send_email_view, name="saved_invoice_send_email"),
     path("invoices/saved/batch/toggle-printed/", views.saved_invoice_batch_print_toggle_view, name="saved_invoice_batch_toggle_printed"),
     path("invoices/<int:invoice_id>/pdf/", views.invoice_pdf_view, name="invoice_pdf"),
     path("invoices/<int:invoice_id>/print/", views.invoice_print_view, name="invoice_print"),
@@ -46,4 +47,5 @@ urlpatterns = [
     path("reports/non-billable-customers/", views.non_billable_customers_view, name="non_billable_customers"),
     path("reports/auto-ach-review/", views.auto_ach_review_view, name="auto_ach_review"),
     path("reports/customer-statement/", views.customer_statement_view, name="customer_statement"),
+    path("reports/customer-statement/send-email/", views.customer_statement_send_email_view, name="customer_statement_send_email"),
 ]

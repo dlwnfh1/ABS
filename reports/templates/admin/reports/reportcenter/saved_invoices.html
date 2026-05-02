@@ -130,9 +130,24 @@
             <p>Set the invoice PDF output folder in System Setting first.</p>
         {% endif %}
         {% if records %}
+            <p>
+                Mail: <strong>{{ delivery_summary.mail }}</strong>
+                &nbsp;|&nbsp; Email: <strong>{{ delivery_summary.email }}</strong>
+                &nbsp;|&nbsp; Mail + Email: <strong>{{ delivery_summary.both }}</strong>
+                &nbsp;|&nbsp; Do Not Send: <strong>{{ delivery_summary.do_not_send }}</strong>
+                {% if delivery_summary.missing_email %}
+                    &nbsp;|&nbsp; Missing email: <strong style="color:#b91c1c;">{{ delivery_summary.missing_email }}</strong>
+                {% endif %}
+            </p>
+        {% endif %}
+        {% if records %}
             <div class="btn-row" style="margin-top:0; margin-bottom:14px;">
                 <a class="btn-secondary" href="{{ merged_print_url }}" target="_blank">Print All Visible as One PDF</a>
                 <a class="btn-secondary" href="{{ merged_pdf_url }}">Download All Visible as One PDF</a>
+                <form method="post" action="{% url 'admin:reports_reportcenter_saved_invoices_send_email' %}?{{ request.GET.urlencode }}" style="display:inline;">
+                    {% csrf_token %}
+                    <button class="btn-secondary" type="submit">Send Email to Visible</button>
+                </form>
             </div>
         {% endif %}
         <div class="table-wrap">
@@ -145,6 +160,9 @@
                         <th>Printed</th>
                         <th>Customer</th>
                         <th>Account #</th>
+                        <th>Delivery</th>
+                        <th>Invoice Email (To)</th>
+                        <th>Invoice Email (Cc)</th>
                         <th>Invoice #</th>
                         <th>Saved File</th>
                         <th>Actions</th>
@@ -170,12 +188,15 @@
                         <td>{% if record.batch_is_printed %}Printed{% else %}Unprinted{% endif %}</td>
                         <td>{{ record.customer_label }}</td>
                         <td>{{ record.account_number }}</td>
+                        <td>{{ record.delivery_method }}</td>
+                        <td>{% if record.missing_invoice_email %}<span style="color:#b91c1c; font-weight:700;">Missing</span>{% else %}{{ record.invoice_email_to }}{% endif %}</td>
+                        <td>{{ record.invoice_email_cc }}</td>
                         <td class="mono">{{ record.invoice_number }}</td>
                         <td class="mono">{{ record.relative_path }}</td>
                         <td><a href="{% url 'portal:saved_invoice_file' %}?path={{ record.relative_path|urlencode }}" target="_blank">Open PDF</a></td>
                     </tr>
                 {% empty %}
-                    <tr><td colspan="9">No saved invoice PDFs were found for the current filter.</td></tr>
+                    <tr><td colspan="12">No saved invoice PDFs were found for the current filter.</td></tr>
                 {% endfor %}
                 </tbody>
             </table>

@@ -31,6 +31,7 @@ from billing.pdf_utils import (
 from customers.models import Customer, Service
 from payments.models import Payment, PaymentAllocation
 from reports.models import InvoiceGenerationBatch, SavedInvoicePDF, SystemSetting
+from reports.notifications import send_saved_invoice_emails
 
 from .forms import PortalCustomerCreateForm, PortalCustomerEditForm, PortalQuickPaymentForm
 
@@ -523,6 +524,9 @@ def customer_create_view(request):
                     billing_address1=form.cleaned_data["billing_address1"],
                     billing_address2=form.cleaned_data["billing_address2"],
                     email_address=form.cleaned_data["email_address"],
+                    invoice_email_to=form.cleaned_data["invoice_email_to"],
+                    invoice_email_cc=form.cleaned_data["invoice_email_cc"],
+                    invoice_delivery_method=form.cleaned_data["invoice_delivery_method"],
                     billing_term=int(form.cleaned_data["billing_term"]),
                     auto_ach=form.cleaned_data["auto_ach"],
                     tax_rate=form.cleaned_data["tax_rate"],
@@ -569,6 +573,9 @@ def customer_edit_view(request, customer_id):
                 customer.billing_address1 = form.cleaned_data["billing_address1"]
                 customer.billing_address2 = form.cleaned_data["billing_address2"]
                 customer.email_address = form.cleaned_data["email_address"]
+                customer.invoice_email_to = form.cleaned_data["invoice_email_to"]
+                customer.invoice_email_cc = form.cleaned_data["invoice_email_cc"]
+                customer.invoice_delivery_method = form.cleaned_data["invoice_delivery_method"]
                 customer.billing_term = int(form.cleaned_data["billing_term"])
                 customer.auto_ach = form.cleaned_data["auto_ach"]
                 customer.tax_rate = form.cleaned_data["tax_rate"]
@@ -603,6 +610,9 @@ def customer_edit_view(request, customer_id):
             "billing_address1": customer.billing_address1,
             "billing_address2": customer.billing_address2,
             "email_address": customer.email_address,
+            "invoice_email_to": customer.invoice_email_to,
+            "invoice_email_cc": customer.invoice_email_cc,
+            "invoice_delivery_method": customer.invoice_delivery_method,
             "billing_term": customer.billing_term,
             "auto_ach": customer.auto_ach,
             "tax_rate": customer.tax_rate,
@@ -818,6 +828,7 @@ def saved_invoice_list_view(request):
         printed_scope=printed_scope,
     )
     records = _prepare_dispatch_records(result["records"])
+    delivery_summary = _build_dispatch_delivery_summary(records)
     query_string = request.GET.copy()
     return render(
         request,
@@ -828,6 +839,7 @@ def saved_invoice_list_view(request):
             title="Invoice Dispatch",
             page_subtitle=f'Server folder: {result["base_folder"]}' if result["base_folder"] else "Set the invoice PDF output folder first.",
             records=records,
+            delivery_summary=delivery_summary,
             base_folder=result["base_folder"],
             printed_scope=printed_scope,
             merged_pdf_url=f'{reverse("portal:saved_invoice_merged_pdf")}?{query_string.urlencode()}',
@@ -909,11 +921,48 @@ def _prepare_dispatch_records(records):
         item["show_batch_toggle"] = bool(batch_id) and batch_id not in seen_batches
         item["batch_group_start"] = is_new_batch
         item["batch_group_class"] = f"batch-shade-{1 if shade_index % 2 else 2}"
+        customer = item.get("customer")
+        if customer:
+            item["delivery_method"] = customer.get_invoice_delivery_method_display()
+            item["invoice_email_to"] = customer.invoice_email_to or "-"
+            item["invoice_email_cc"] = customer.invoice_email_cc or "-"
+            item["missing_invoice_email"] = (
+                customer.invoice_delivery_method in {Customer.DELIVERY_METHOD_EMAIL, Customer.DELIVERY_METHOD_BOTH}
+                and not customer.invoice_email_to
+            )
+        else:
+            item["delivery_method"] = "-"
+            item["invoice_email_to"] = "-"
+            item["invoice_email_cc"] = "-"
+            item["missing_invoice_email"] = False
         if batch_id:
             seen_batches.add(batch_id)
         last_batch_id = batch_id
         prepared.append(item)
     return prepared
+
+
+def _build_dispatch_delivery_summary(records):
+    summary = {"mail": 0, "email": 0, "both": 0, "do_not_send": 0, "missing_email": 0}
+    seen_customer_ids = set()
+    for record in records:
+        customer = record.get("customer")
+        if not customer or customer.pk in seen_customer_ids:
+            continue
+        seen_customer_ids.add(customer.pk)
+        if customer.invoice_delivery_method == Customer.DELIVERY_METHOD_MAIL:
+            summary["mail"] += 1
+        elif customer.invoice_delivery_method == Customer.DELIVERY_METHOD_EMAIL:
+            summary["email"] += 1
+            if not customer.invoice_email_to:
+                summary["missing_email"] += 1
+        elif customer.invoice_delivery_method == Customer.DELIVERY_METHOD_BOTH:
+            summary["both"] += 1
+            if not customer.invoice_email_to:
+                summary["missing_email"] += 1
+        elif customer.invoice_delivery_method == Customer.DELIVERY_METHOD_DO_NOT_SEND:
+            summary["do_not_send"] += 1
+    return summary
 
 
 @login_required(login_url="portal:login")
@@ -944,6 +993,32 @@ def saved_invoice_merged_print_view(request):
     elif updated_batches:
         messages.success(request, f"{len(updated_batches)} batches were marked as printed.")
     return _pdf_response(pdf_bytes, "saved-invoices-merged.pdf", as_attachment=False)
+
+
+@login_required(login_url="portal:login")
+def saved_invoice_send_email_view(request):
+    records = _saved_invoice_filtered_records(request, limit=0)
+    result = send_saved_invoice_emails(records)
+    if result["sent_customers"]:
+        messages.success(
+            request,
+            f'Emailed {result["sent_invoices"]} invoice PDF(s) to {result["sent_customers"]} customer(s).',
+        )
+    if result["missing_email_customers"]:
+        messages.warning(
+            request,
+            f'{result["missing_email_customers"]} customer(s) were skipped because invoice email is missing.',
+        )
+    if result["skipped_customers"]:
+        messages.info(
+            request,
+            f'{result["skipped_customers"]} customer(s) were skipped because delivery method is Do Not Send.',
+        )
+    for failure in result["failed"][:5]:
+        messages.error(request, f"Email send failed: {failure}")
+    if not result["sent_customers"] and not result["missing_email_customers"] and not result["failed"]:
+        messages.warning(request, "No visible invoice PDFs were eligible for email delivery.")
+    return redirect(f'{reverse("portal:saved_invoice_list")}?{request.GET.urlencode()}')
 
 
 @login_required(login_url="portal:login")
@@ -1248,6 +1323,10 @@ def customer_statement_view(request):
             customers=customers,
             selected_customer=selected_customer,
             selected_customer_id=int(customer_id) if customer_id and customer_id.isdigit() else None,
+            resend_invoice_email_url=(
+                f'{reverse("portal:customer_statement_send_email")}?customer={selected_customer.pk}'
+                if selected_customer else ""
+            ),
             invoices=invoices,
             payments=payments,
             invoice_count=invoice_count,
@@ -1259,6 +1338,44 @@ def customer_statement_view(request):
             primary_service=primary_service,
         ),
     )
+
+
+@login_required(login_url="portal:login")
+def customer_statement_send_email_view(request):
+    customer_id = request.GET.get("customer")
+    customer = get_object_or_404(Customer, pk=customer_id)
+    latest_saved = (
+        SavedInvoicePDF.objects.select_related("customer", "invoice", "batch")
+        .filter(customer=customer, marker="CURRENT")
+        .exclude(absolute_path="")
+        .order_by("-created_at", "-id")
+        .first()
+    )
+    if not latest_saved:
+        messages.warning(request, "No saved current invoice PDF was found for this customer.")
+        return redirect(f'{reverse("portal:customer_statement")}?customer={customer.pk}')
+
+    record = {
+        "customer": latest_saved.customer,
+        "invoice": latest_saved.invoice,
+        "invoice_number": latest_saved.invoice_number,
+        "path": Path(latest_saved.absolute_path),
+        "relative_path": latest_saved.relative_path.replace("\\", "/"),
+        "batch_id": latest_saved.batch_id,
+        "marker": latest_saved.marker,
+    }
+    result = send_saved_invoice_emails([record])
+    if result["sent_customers"]:
+        messages.success(request, f"Invoice email was sent for {customer.name}.")
+    if result["missing_email_customers"]:
+        messages.warning(request, "Invoice email could not be sent because To email is missing.")
+    if result["skipped_customers"]:
+        messages.info(request, "Invoice email was skipped because delivery method is Do Not Send.")
+    for failure in result["failed"][:5]:
+        messages.error(request, f"Email send failed: {failure}")
+    if not result["sent_customers"] and not result["missing_email_customers"] and not result["failed"] and not result["skipped_customers"]:
+        messages.warning(request, "This customer is not eligible for email delivery.")
+    return redirect(f'{reverse("portal:customer_statement")}?customer={customer.pk}')
 
 
 
