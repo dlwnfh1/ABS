@@ -8,7 +8,8 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db import transaction
-from django.db.models import Max, Prefetch, Q
+from django.db.models import Max, Prefetch, Q, Value
+from django.db.models.functions import Replace
 from django.http import FileResponse, Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
@@ -442,6 +443,7 @@ def dashboard_view(request):
 @login_required(login_url="portal:login")
 def customer_list_view(request):
     query = (request.GET.get("q") or "").strip()
+    normalized_query = "".join(query.split())
     status_filter = (request.GET.get("status") or "active").strip().lower()
 
     customers = _portal_customer_queryset().order_by("name", "account_number")
@@ -454,11 +456,20 @@ def customer_list_view(request):
         customers = customers.filter(is_active=True)
 
     if query:
-        customers = customers.filter(
+        customers = customers.annotate(
+            search_name_no_space=Replace("name", Value(" "), Value("")),
+            search_account_no_space=Replace("account_number", Value(" "), Value("")),
+            search_billing_address1_no_space=Replace("billing_address1", Value(" "), Value("")),
+            search_billing_address2_no_space=Replace("billing_address2", Value(" "), Value("")),
+        ).filter(
             Q(name__icontains=query)
             | Q(account_number__icontains=query)
             | Q(billing_address1__icontains=query)
             | Q(billing_address2__icontains=query)
+            | Q(search_name_no_space__icontains=normalized_query)
+            | Q(search_account_no_space__icontains=normalized_query)
+            | Q(search_billing_address1_no_space__icontains=normalized_query)
+            | Q(search_billing_address2_no_space__icontains=normalized_query)
         ).order_by("name", "account_number")
 
     page_obj, page_query, page_numbers = _paginate_items(request, customers, 25)

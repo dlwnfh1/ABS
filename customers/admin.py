@@ -7,7 +7,8 @@ from decimal import Decimal, InvalidOperation
 from django.contrib import admin
 from django.contrib import messages
 from django.contrib.admin.views.main import ChangeList
-from django.db.models import Count, Max, Prefetch, Q
+from django.db.models import Count, Max, Prefetch, Q, Value
+from django.db.models.functions import Replace
 from django.http import HttpResponseRedirect, HttpResponse
 from django.db import transaction
 from django.template.response import TemplateResponse
@@ -175,6 +176,33 @@ class CustomerAdmin(admin.ModelAdmin):
             ),
         ]
         return custom_urls + urls
+
+    def get_search_results(self, request, queryset, search_term):
+        queryset, use_distinct = super().get_search_results(request, queryset, search_term)
+        normalized_search_term = "".join((search_term or "").split())
+        if not normalized_search_term:
+            return queryset, use_distinct
+
+        normalized_matches = queryset.annotate(
+            search_account_no_space=Replace("account_number", Value(" "), Value("")),
+            search_name_no_space=Replace("name", Value(" "), Value("")),
+            search_email_no_space=Replace("email_address", Value(" "), Value("")),
+            search_billing_address1_no_space=Replace("billing_address1", Value(" "), Value("")),
+            search_billing_address2_no_space=Replace("billing_address2", Value(" "), Value("")),
+            search_service_address1_no_space=Replace("services__service_address1", Value(" "), Value("")),
+            search_service_address2_no_space=Replace("services__service_address2", Value(" "), Value("")),
+        ).filter(
+            Q(search_account_no_space__icontains=normalized_search_term)
+            | Q(search_name_no_space__icontains=normalized_search_term)
+            | Q(search_email_no_space__icontains=normalized_search_term)
+            | Q(search_billing_address1_no_space__icontains=normalized_search_term)
+            | Q(search_billing_address2_no_space__icontains=normalized_search_term)
+            | Q(search_service_address1_no_space__icontains=normalized_search_term)
+            | Q(search_service_address2_no_space__icontains=normalized_search_term)
+        ).values_list("pk", flat=True)
+
+        queryset = queryset | queryset.filter(pk__in=normalized_matches)
+        return queryset.distinct(), True
 
     def get_changelist(self, request, **kwargs):
         return CustomerChangeList
