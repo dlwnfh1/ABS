@@ -161,7 +161,7 @@
             }));
             const syncSelectedLabel = () => {
                 const selectedOption = options.find(option => option.value === select.value);
-                filterInput.value = selectedOption ? selectedOption.text : '';
+                filterInput.value = selectedOption && selectedOption.value ? selectedOption.text : '';
             };
             const renderMatches = () => {
                 const query = normalize(filterInput.value);
