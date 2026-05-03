@@ -22,6 +22,28 @@ from reports.notifications import send_billing_dispatch_alert
 from .models import Customer, Service
 
 
+def _normalize_search_expression(field_name):
+    expression = field_name
+    for source, target in (
+        (" ", ""),
+        ("-", ""),
+        ("(", ""),
+        (")", ""),
+        (",", ""),
+        (".", ""),
+        ("'", ""),
+    ):
+        expression = Replace(expression, Value(source), Value(target))
+    return expression
+
+
+def _normalize_search_term(value):
+    normalized = (value or "").lower().strip()
+    for source in (" ", "-", "(", ")", ",", ".", "'"):
+        normalized = normalized.replace(source, "")
+    return normalized
+
+
 class CustomerChangeList(ChangeList):
     def __init__(self, request, *args, **kwargs):
         self.request = request
@@ -183,31 +205,43 @@ class CustomerAdmin(admin.ModelAdmin):
         return custom_urls + urls
 
     def get_search_results(self, request, queryset, search_term):
-        queryset, use_distinct = super().get_search_results(request, queryset, search_term)
-        normalized_search_term = "".join((search_term or "").split())
-        if not normalized_search_term:
-            return queryset, use_distinct
+        raw_search_term = (search_term or "").strip()
+        normalized_search_term = _normalize_search_term(search_term)
+        if not raw_search_term:
+            return queryset, False
 
-        normalized_matches = queryset.annotate(
-            search_account_no_space=Replace("account_number", Value(" "), Value("")),
-            search_name_no_space=Replace("name", Value(" "), Value("")),
-            search_email_no_space=Replace("email_address", Value(" "), Value("")),
-            search_billing_address1_no_space=Replace("billing_address1", Value(" "), Value("")),
-            search_billing_address2_no_space=Replace("billing_address2", Value(" "), Value("")),
-            search_service_address1_no_space=Replace("services__service_address1", Value(" "), Value("")),
-            search_service_address2_no_space=Replace("services__service_address2", Value(" "), Value("")),
-        ).filter(
-            Q(search_account_no_space__icontains=normalized_search_term)
-            | Q(search_name_no_space__icontains=normalized_search_term)
-            | Q(search_email_no_space__icontains=normalized_search_term)
-            | Q(search_billing_address1_no_space__icontains=normalized_search_term)
-            | Q(search_billing_address2_no_space__icontains=normalized_search_term)
-            | Q(search_service_address1_no_space__icontains=normalized_search_term)
-            | Q(search_service_address2_no_space__icontains=normalized_search_term)
-        ).values_list("pk", flat=True)
+        queryset = queryset.annotate(
+            search_account_no_space=_normalize_search_expression("account_number"),
+            search_name_no_space=_normalize_search_expression("name"),
+            search_email_no_space=_normalize_search_expression("email_address"),
+            search_billing_address1_no_space=_normalize_search_expression("billing_address1"),
+            search_billing_address2_no_space=_normalize_search_expression("billing_address2"),
+            search_service_address1_no_space=_normalize_search_expression("services__service_address1"),
+            search_service_address2_no_space=_normalize_search_expression("services__service_address2"),
+        )
+        query = (
+            Q(account_number__icontains=raw_search_term)
+            | Q(name__icontains=raw_search_term)
+            | Q(email_address__icontains=raw_search_term)
+            | Q(invoice_email_to__icontains=raw_search_term)
+            | Q(invoice_email_cc__icontains=raw_search_term)
+            | Q(billing_address1__icontains=raw_search_term)
+            | Q(billing_address2__icontains=raw_search_term)
+            | Q(services__service_address1__icontains=raw_search_term)
+            | Q(services__service_address2__icontains=raw_search_term)
+        )
+        if normalized_search_term:
+            query |= (
+                Q(search_account_no_space__icontains=normalized_search_term)
+                | Q(search_name_no_space__icontains=normalized_search_term)
+                | Q(search_email_no_space__icontains=normalized_search_term)
+                | Q(search_billing_address1_no_space__icontains=normalized_search_term)
+                | Q(search_billing_address2_no_space__icontains=normalized_search_term)
+                | Q(search_service_address1_no_space__icontains=normalized_search_term)
+                | Q(search_service_address2_no_space__icontains=normalized_search_term)
+            )
 
-        queryset = queryset | queryset.filter(pk__in=normalized_matches)
-        return queryset.distinct(), True
+        return queryset.filter(query).distinct(), True
 
     def get_changelist(self, request, **kwargs):
         return CustomerChangeList

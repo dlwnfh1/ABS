@@ -2,18 +2,17 @@
 {% block content %}
 <div class="row">
     <div class="card">
-        <h3>Enter Payment</h3>
-        <p class="page-sub">Select a customer, enter the payment amount, preview the allocation, then save.</p>
         <form method="post" enctype="multipart/form-data">
             {% csrf_token %}
             <div class="form-grid">
                 <div class="full">
                     <label for="customer-filter">Customer Search</label>
                     <input type="text" id="customer-filter" placeholder="Type customer name or account number">
+                    <div id="customer-search-results" style="display:none; margin-top:8px; border:1px solid #dbe5f0; border-radius:10px; background:#fff; max-height:280px; overflow:auto;"></div>
                 </div>
                 {% for field in form %}
                     {% if field.name != 'attachment_file' %}
-                    <div class="{% if field.name == 'note' %}full{% endif %}">
+                    <div class="{% if field.name == 'note' %}full{% endif %}" {% if field.name == 'customer' %}style="display:none;"{% endif %}>
                         <label for="id_{{ field.name }}">{{ field.label }}</label>
                         {{ field }}
                         {% if field.errors %}
@@ -153,28 +152,68 @@
     (function() {
         const filterInput = document.getElementById('customer-filter');
         const select = document.getElementById('id_customer');
-        if (filterInput && select) {
-            const normalize = (value) => (value || '').toLowerCase().replace(/\s+/g, '');
+        const results = document.getElementById('customer-search-results');
+        if (filterInput && select && results) {
+            const normalize = (value) => (value || '').toLowerCase().replace(/[\s\-(),.']/g, '');
             const options = Array.from(select.options).map(option => ({
                 value: option.value,
-                text: option.text,
-                selected: option.selected
+                text: option.text
             }));
-            filterInput.addEventListener('input', function() {
+            const syncSelectedLabel = () => {
+                const selectedOption = options.find(option => option.value === select.value);
+                filterInput.value = selectedOption ? selectedOption.text : '';
+            };
+            const renderMatches = () => {
                 const query = normalize(filterInput.value);
-                const current = select.value;
-                select.innerHTML = '';
-                options.forEach(option => {
-                    if (!option.value || normalize(option.text).includes(query)) {
-                        const el = document.createElement('option');
-                        el.value = option.value;
-                        el.textContent = option.text;
-                        if (option.value === current) {
-                            el.selected = true;
-                        }
-                        select.appendChild(el);
-                    }
+                const matches = options.filter(option => option.value && (!query || normalize(option.text).includes(query)));
+                results.innerHTML = '';
+                if (!query) {
+                    results.style.display = 'none';
+                    return matches;
+                }
+                results.style.display = matches.length ? 'block' : 'none';
+                matches.slice(0, 12).forEach(option => {
+                    const item = document.createElement('button');
+                    item.type = 'button';
+                    item.textContent = option.text;
+                    item.style.display = 'block';
+                    item.style.width = '100%';
+                    item.style.textAlign = 'left';
+                    item.style.padding = '10px 12px';
+                    item.style.border = '0';
+                    item.style.borderBottom = '1px solid #eef2f6';
+                    item.style.background = option.value === select.value ? '#eef6ff' : '#fff';
+                    item.style.cursor = 'pointer';
+                    item.addEventListener('click', function() {
+                        select.value = option.value;
+                        syncSelectedLabel();
+                        results.style.display = 'none';
+                        select.dispatchEvent(new Event('change'));
+                    });
+                    results.appendChild(item);
                 });
+                return matches;
+            };
+            filterInput.addEventListener('input', function() {
+                const matches = renderMatches();
+                if (matches.length === 1) {
+                    select.value = matches[0].value;
+                }
+            });
+            filterInput.addEventListener('keydown', function(event) {
+                if (event.key !== 'Enter') {
+                    return;
+                }
+                const matches = renderMatches();
+                const selectedOption = matches[0];
+                if (!selectedOption || !selectedOption.value) {
+                    return;
+                }
+                event.preventDefault();
+                select.value = selectedOption.value;
+                syncSelectedLabel();
+                results.style.display = 'none';
+                select.dispatchEvent(new Event('change'));
             });
             select.addEventListener('change', function() {
                 if (!select.value) {
@@ -192,6 +231,17 @@
                 }
                 window.location.search = params.toString();
             });
+            document.addEventListener('click', function(event) {
+                if (!results.contains(event.target) && event.target !== filterInput) {
+                    results.style.display = 'none';
+                }
+            });
+            filterInput.addEventListener('focus', function() {
+                if (filterInput.value.trim()) {
+                    renderMatches();
+                }
+            });
+            syncSelectedLabel();
         }
 
         const focusAmount = new URLSearchParams(window.location.search).get('focus');
