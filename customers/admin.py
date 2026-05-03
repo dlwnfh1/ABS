@@ -164,7 +164,7 @@ class CustomerAdmin(admin.ModelAdmin):
             )
         )
         self._candidate_map = {
-            customer.pk: self._build_customer_workflow(customer)
+            customer.pk: {**self._build_customer_workflow(customer), "_customer": customer}
             for customer in queryset
         }
 
@@ -278,7 +278,7 @@ class CustomerAdmin(admin.ModelAdmin):
             )
         )
         self._candidate_map = {
-            customer.pk: self._build_customer_workflow(customer)
+            customer.pk: {**self._build_customer_workflow(customer), "_customer": customer}
             for customer in queryset
         }
         status_filter = filter_params.get("workflow_status", "all")
@@ -868,8 +868,25 @@ class CustomerAdmin(admin.ModelAdmin):
         query_string = params.urlencode()
         return f"?{query_string}" if query_string else "?"
 
-    def _build_workflow_filters(self, params):
+    def _candidate_items_for_filters(self, params):
         self._ensure_candidate_map()
+        active_filter = params.get("active_state", "active")
+        term_filter = params.get("term", "all")
+        items = []
+        for customer_id, candidate in self._candidate_map.items():
+            customer = candidate.get("_customer")
+            if not customer:
+                continue
+            if active_filter == "active" and not customer.is_active:
+                continue
+            if active_filter == "inactive" and customer.is_active:
+                continue
+            if term_filter in {"3", "6", "9", "12"} and customer.billing_term != int(term_filter):
+                continue
+            items.append((customer_id, candidate))
+        return items
+
+    def _build_workflow_filters(self, params):
         current = params.get("workflow_status", "all")
         options = [
             ("all", "All"),
@@ -879,9 +896,10 @@ class CustomerAdmin(admin.ModelAdmin):
             ("due_in_30", "Due in 30 Days"),
             ("setup_needed", "Setup Needed"),
         ]
-        counts = {"all": len(self._candidate_map)}
+        candidate_items = self._candidate_items_for_filters(params)
+        counts = {"all": len(candidate_items)}
         for value, _label in options[1:]:
-            counts[value] = sum(1 for candidate in self._candidate_map.values() if candidate["status"] == value)
+            counts[value] = sum(1 for _customer_id, candidate in candidate_items if candidate["status"] == value)
         return [
             {
                 "label": f"{label} ({counts.get(value, 0)})",
@@ -900,14 +918,19 @@ class CustomerAdmin(admin.ModelAdmin):
             "active": base_queryset.filter(is_active=True).count(),
             "inactive": base_queryset.filter(is_active=False).count(),
         }
-        return [
-            {
-                "label": f"{label} ({counts.get(value, 0)})",
-                "url": self._replace_query(params, active_state=value),
-                "active": current == value,
-            }
-            for value, label in options
-        ]
+        items = []
+        for value, label in options:
+            url_params = params.copy()
+            url_params["active_state"] = value
+            query_string = url_params.urlencode()
+            items.append(
+                {
+                    "label": f"{label} ({counts.get(value, 0)})",
+                    "url": f"?{query_string}" if query_string else "?",
+                    "active": current == value,
+                }
+            )
+        return items
 
     def _build_term_filters(self, params):
         current = params.get("term", "all")
