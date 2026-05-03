@@ -154,17 +154,18 @@
         const filterInput = document.getElementById('customer-filter');
         const select = document.getElementById('id_customer');
         if (filterInput && select) {
+            const normalize = (value) => (value || '').toLowerCase().replace(/\s+/g, '');
             const options = Array.from(select.options).map(option => ({
                 value: option.value,
                 text: option.text,
                 selected: option.selected
             }));
             filterInput.addEventListener('input', function() {
-                const query = filterInput.value.toLowerCase();
+                const query = normalize(filterInput.value);
                 const current = select.value;
                 select.innerHTML = '';
                 options.forEach(option => {
-                    if (!option.value || option.text.toLowerCase().includes(query)) {
+                    if (!option.value || normalize(option.text).includes(query)) {
                         const el = document.createElement('option');
                         el.value = option.value;
                         el.textContent = option.text;
