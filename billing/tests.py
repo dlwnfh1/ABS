@@ -7,6 +7,7 @@ from customers.models import Customer, Service
 from payments.models import Payment
 
 from .models import Invoice, InvoiceItem
+from .pdf_utils import build_invoice_pdf_context
 
 
 class BillingWorkflowTests(TestCase):
@@ -251,5 +252,56 @@ class BillingWorkflowTests(TestCase):
                 (date(2026, 2, 1), date(2026, 4, 30)),
             ],
         )
+
+    def test_special_invoice_format_context_for_selected_accounts(self):
+        customer = Customer.objects.create(
+            name="Special Format Customer",
+            account_number="5896770",
+            billing_address1="3 Main St",
+            tax_rate=Decimal("0.000"),
+            billing_term=3,
+            first_billing_date=date(2025, 5, 1),
+            email_address="345-678-9012",
+        )
+        Service.objects.create(
+            customer=customer,
+            service_name="Monitoring Service",
+            service_address1="3 Main St",
+            activation_date=date(2025, 5, 1),
+            billing_amount=Decimal("150.00"),
+        )
+        Service.objects.create(
+            customer=customer,
+            service_name="Service Fee A",
+            service_address1="3 Main St",
+            activation_date=date(2025, 5, 1),
+            billing_amount=Decimal("14.79"),
+        )
+        Service.objects.create(
+            customer=customer,
+            service_name="Service Fee B",
+            service_address1="3 Main St",
+            activation_date=date(2025, 5, 1),
+            billing_amount=Decimal("12.00"),
+        )
+
+        first_invoice = Invoice.objects.get(customer=customer, auto_generated=False)
+        second_invoice = first_invoice.generate_next_invoice()
+        third_invoice = second_invoice.generate_next_invoice()
+
+        context = build_invoice_pdf_context(third_invoice)
+
+        self.assertTrue(context["is_special_invoice_format"])
+        self.assertEqual(len(context["display_items"]), 10)
+        self.assertEqual(context["display_items"][0]["description"], "Monitoring Service")
+        self.assertEqual(context["display_items"][1]["description"], "Service Fee A")
+        self.assertEqual(context["display_items"][2]["description"], "Service Fee B")
+        self.assertEqual(context["display_items"][3]["description"], "Monitoring Service")
+        self.assertEqual(context["display_items"][4]["description"], "Service Fee A")
+        self.assertEqual(context["display_items"][5]["description"], "Service Fee B")
+        self.assertEqual(context["special_subtotal"], Decimal("450.00"))
+        self.assertEqual(context["special_tax_fees_total"], Decimal("80.37"))
+        self.assertEqual(context["special_original_total"], Decimal("530.37"))
+        self.assertEqual(context["current_balance_due"], Decimal("530.37"))
 
 # Create your tests here.

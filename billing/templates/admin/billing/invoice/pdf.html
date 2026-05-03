@@ -186,6 +186,20 @@
             font-size: 8.4pt;
             line-height: 1.05;
         }
+        .line-items.special td {
+            padding: 1.8pt 3.8pt;
+            height: 18pt;
+        }
+        .line-items.special .line-main {
+            font-size: 8.7pt;
+            margin-bottom: 0;
+        }
+        .line-items.special .line-main.detail {
+            font-size: 7.7pt;
+            padding-left: 16pt;
+            color: #4f6478;
+            font-weight: 600;
+        }
 
         .totals-table td {
             padding: 2.5pt 4pt;
@@ -271,7 +285,7 @@
                 </table>
             </td>
             <td width="58%" style="vertical-align: top;">
-                <div class="remit-panel" style="padding-top: 8pt; padding-bottom: 8pt; min-height: 102pt;">
+                <div class="remit-panel" style="padding-top: 8pt; padding-bottom: 8pt; min-height: {% if is_special_invoice_format %}86pt{% else %}102pt{% endif %};">
                     <div class="remit-title">Return This Slip With Payment</div>
                     <table>
                         <tr>
@@ -281,9 +295,9 @@
                             <td width="24%"><div class="field-label">Amount Due</div><div class="field-value">${{ current_balance_due|floatformat:2 }}</div></td>
                         </tr>
                     </table>
-                    <div class="muted" style="margin-top: 3pt; font-size: 9.2pt;"><strong>Customer: {{ invoice.customer.name }}</strong></div>
-                    <div class="muted" style="margin-top: 2pt; font-size: 7.6pt;"><strong>Billing To:</strong> {{ billing_to_display }}</div>
-                    <div class="muted" style="margin-top: 1pt; font-size: 7.6pt;"><strong>Service At:</strong> {{ service_at_display }}</div>
+                    <div class="muted" style="margin-top: 3pt; font-size: {% if is_special_invoice_format %}8.4pt{% else %}9.2pt{% endif %};"><strong>Customer: {{ invoice.customer.name }}</strong></div>
+                    <div class="muted" style="margin-top: 2pt; font-size: {% if is_special_invoice_format %}7.0pt{% else %}7.6pt{% endif %};"><strong>Billing To:</strong> {{ billing_to_display }}</div>
+                    <div class="muted" style="margin-top: 1pt; font-size: {% if is_special_invoice_format %}7.0pt{% else %}7.6pt{% endif %};"><strong>Service At:</strong> {{ service_at_display }}</div>
                 </div>
             </td>
         </tr>
@@ -304,7 +318,7 @@
                         </td>
                     </tr>
                 </table>
-                <div class="billto-block">
+                <div class="billto-block" style="{% if is_special_invoice_format %}margin-top:6pt; padding-top:6pt; padding-bottom:1pt;{% endif %}">
                     <div class="billto-title">&nbsp;</div>
                     <table style="width:100%; border-collapse:collapse;"><tr><td class="billto-name" style="padding:0; vertical-align:bottom;">&nbsp;</td></tr></table>
                     <div style="height:0; line-height:0; font-size:0; margin:0; padding:0;">&nbsp;</div>
@@ -333,7 +347,7 @@
                 <div class="panel" style="background:#f5f8fb; margin-top: 3pt; padding-top: 3.2pt; padding-bottom: 2.4pt;">
                     <div class="section-label">Billing Overview</div>
                     <div class="strong-block">{{ invoice.period_start|date:"m/d/Y" }} - {{ invoice.period_end|date:"m/d/Y" }}</div>
-                    <div class="muted">Billing Term: {{ invoice.customer.get_billing_term_display }}<br>Tax Rate: {{ invoice.tax_rate }}%<br>Current Billing Amount: ${{ invoice.current_period_amount|floatformat:2 }}</div>
+                    <div class="muted">Billing Term: {{ invoice.customer.get_billing_term_display }}<br>{% if not is_special_invoice_format %}Tax Rate: {{ invoice.tax_rate }}%<br>{% endif %}Current Billing Amount: ${{ invoice.current_period_amount|floatformat:2 }}</div>
                 </div>
             </td>
         </tr>
@@ -341,13 +355,13 @@
 
     <table style="margin-top: 2.4pt; margin-bottom: 2.4pt;">
         <tr>
-            <td width="28%" style="padding-right: 4pt; vertical-align: top;"><div class="summary-panel"><div class="section-label">Subtotal</div><div class="summary-value">${{ invoice.subtotal|floatformat:2 }}</div></div></td>
-            <td width="28%" style="padding: 0 2pt; vertical-align: top;"><div class="summary-panel"><div class="section-label">Tax Amount</div><div class="summary-value">${{ invoice.tax_amount|floatformat:2 }}</div></div></td>
+            <td width="28%" style="padding-right: 4pt; vertical-align: top;"><div class="summary-panel"><div class="section-label">Subtotal</div><div class="summary-value">${% if is_special_invoice_format %}{{ special_subtotal|floatformat:2 }}{% else %}{{ invoice.subtotal|floatformat:2 }}{% endif %}</div></div></td>
+            <td width="28%" style="padding: 0 2pt; vertical-align: top;"><div class="summary-panel"><div class="section-label">{% if is_special_invoice_format %}Total tax &amp; fees{% else %}Tax Amount{% endif %}</div><div class="summary-value">${% if is_special_invoice_format %}{{ special_tax_fees_total|floatformat:2 }}{% else %}{{ invoice.tax_amount|floatformat:2 }}{% endif %}</div></div></td>
             <td width="44%" style="padding-left: 4pt; vertical-align: top;"><div class="summary-panel" style="background:#fff8ed; border-color:#e7cd9f;"><div class="section-label">{% if is_latest_issued_invoice %}Current Open Balance{% else %}Open Amount{% endif %}</div><div class="summary-value">${{ current_balance_due|floatformat:2 }}</div></div></td>
         </tr>
     </table>
 
-    <table class="line-items" style="margin-top: 2pt;">
+    <table class="line-items{% if is_special_invoice_format %} special{% endif %}" style="margin-top: 2pt;">
         <thead>
             <tr>
                 <th width="43%">Description</th>
@@ -356,9 +370,9 @@
             </tr>
         </thead>
         <tbody>
-            {% for item in padded_items %}
+            {% for item in display_items %}
             <tr>
-                <td>{% if item.description %}<div class="line-main">{{ item.description }}</div><div class="line-sub">{% if item.line_type == 'carryover' %}Past due balance carried into this invoice.{% elif item.line_type == 'rollup' %}Includes additional unpaid billing periods not shown above.{% else %}Current billing period charge.{% endif %}</div>{% else %}<div class="line-main">&nbsp;</div><div class="line-sub">&nbsp;</div>{% endif %}</td>
+                <td>{% if item.description %}<div class="line-main{% if is_special_invoice_format and item.is_detail %} detail{% endif %}">{{ item.description }}</div>{% if not is_special_invoice_format %}<div class="line-sub">{% if item.line_type == 'carryover' %}Past due balance carried into this invoice.{% elif item.line_type == 'rollup' %}Includes additional unpaid billing periods not shown above.{% else %}Current billing period charge.{% endif %}</div>{% endif %}{% else %}<div class="line-main">&nbsp;</div>{% if not is_special_invoice_format %}<div class="line-sub">&nbsp;</div>{% endif %}{% endif %}</td>
                 <td>{% if item.period_start %}{{ item.period_start|date:"m/d/Y" }} - {{ item.period_end|date:"m/d/Y" }}{% else %}<span style="display:block; height: 8pt;">&nbsp;</span>{% endif %}</td>
                 <td class="num">{% if item.amount is not None %}${{ item.amount|floatformat:2 }}{% else %}<span style="display:block; height: 8pt;">&nbsp;</span>{% endif %}</td>
             </tr>
@@ -378,10 +392,10 @@
                 <div class="summary-panel">
                     <table class="totals-table">
                         {% if invoice.partial_payment > 0 %}<tr><td>Partial Payment</td><td class="num">-${{ invoice.partial_payment|floatformat:2 }}</td></tr>{% endif %}
-                        <tr><td>Subtotal</td><td class="num">${{ invoice.subtotal|floatformat:2 }}</td></tr>
-                        <tr><td>Tax Rate</td><td class="num">{{ invoice.tax_rate }}%</td></tr>
-                        <tr><td>Tax Amount</td><td class="num">${{ invoice.tax_amount|floatformat:2 }}</td></tr>
-                        <tr><td>Original Invoice Total</td><td class="num">${{ invoice.total_due|floatformat:2 }}</td></tr>
+                        <tr><td>Subtotal</td><td class="num">${% if is_special_invoice_format %}{{ special_subtotal|floatformat:2 }}{% else %}{{ invoice.subtotal|floatformat:2 }}{% endif %}</td></tr>
+                        {% if not is_special_invoice_format %}<tr><td>Tax Rate</td><td class="num">{{ invoice.tax_rate }}%</td></tr>{% endif %}
+                        <tr><td>{% if is_special_invoice_format %}Total tax &amp; fees{% else %}Tax Amount{% endif %}</td><td class="num">${% if is_special_invoice_format %}{{ special_tax_fees_total|floatformat:2 }}{% else %}{{ invoice.tax_amount|floatformat:2 }}{% endif %}</td></tr>
+                        <tr><td>Original Invoice Total</td><td class="num">${% if is_special_invoice_format %}{{ special_original_total|floatformat:2 }}{% else %}{{ invoice.total_due|floatformat:2 }}{% endif %}</td></tr>
                         <tr class="grand"><td>{% if is_latest_issued_invoice %}Current Open Balance{% else %}Open Amount{% endif %}</td><td class="num">${{ current_balance_due|floatformat:2 }}</td></tr>
                     </table>
                 </div>

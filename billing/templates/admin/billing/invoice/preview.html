@@ -68,6 +68,9 @@
     .invoice-table tbody td { padding: 10px 12px; border-top: 1px solid var(--invoice-line); vertical-align: top; color: #0f172a; }
     .line-main { font-weight: 800; margin-bottom: 2px; }
     .line-sub { color: #64748b; font-size: 12px; line-height: 1.3; }
+    .invoice-table.special tbody td { padding: 7px 10px; }
+    .invoice-table.special .line-main { margin-bottom: 0; font-size: 13px; }
+    .invoice-table.special .line-main.detail { padding-left: 18px; font-size: 11.5px; color: #5d7287; font-weight: 600; }
     .invoice-note.payment { background: var(--invoice-alert); border-color: var(--invoice-alert-line); }
     .invoice-note { margin-bottom: 10px; }
     .invoice-total-row { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; font-size: 14px; }
@@ -107,7 +110,7 @@
                         </div>
                     </div>
                 </div>
-                <div class="card">
+                <div class="card" style="{% if is_special_invoice_format %}padding-top:10px; padding-bottom:10px;{% endif %}">
                     <div class="card-title">Return This Slip With Payment</div>
                     <div class="card-text">Include this top portion in the envelope with your check payment.</div>
                     <div class="remit-fields">
@@ -116,7 +119,7 @@
                         <div class="remit-field"><div class="remit-label">Due Date</div><div class="remit-value">{{ invoice.due_date|date:"m/d/Y" }}</div></div>
                         <div class="remit-field"><div class="remit-label">Amount Due</div><div class="remit-value">${{ current_balance_due|floatformat:2 }}</div></div>
                     </div>
-                    <div class="card-text" style="margin-top: 8px;">Customer: {{ invoice.customer.name }}</div>
+                    <div class="card-text" style="margin-top: 8px; {% if is_special_invoice_format %}font-size:12px;{% endif %}">Customer: {{ invoice.customer.name }}</div>
                 </div>
             </div>
         </div>
@@ -147,35 +150,35 @@
 
         <div class="invoice-body">
             <div class="invoice-address-grid">
-                <div class="invoice-panel">
+                <div class="invoice-panel" style="{% if is_special_invoice_format %}padding-top:10px; padding-bottom:10px;{% endif %}">
                     <div class="invoice-panel-title">Bill To</div>
                     <strong>{{ invoice.customer.name }}</strong>
                     <div class="muted">Account #: {{ invoice.customer.account_number }}<br>{{ invoice.customer.billing_address1 }}<br>{% if invoice.customer.billing_address2 %}{{ invoice.customer.billing_address2 }}<br>{% endif %}{% if invoice.customer.email_address %}Phone: {{ invoice.customer.email_address }}{% endif %}</div>
                 </div>
-                <div class="invoice-panel soft">
+                <div class="invoice-panel soft" style="{% if is_special_invoice_format %}padding-top:10px; padding-bottom:10px;{% endif %}">
                     <div class="invoice-panel-title">Billing Overview</div>
                     <strong>{{ invoice.period_start|date:"m/d/Y" }} - {{ invoice.period_end|date:"m/d/Y" }}</strong>
-                    <div class="muted">Billing Term: {{ invoice.customer.get_billing_term_display }}<br>Tax Rate: {{ invoice.tax_rate }}%<br>Current Billing Amount: ${{ invoice.current_period_amount|floatformat:2 }}</div>
+                    <div class="muted">Billing Term: {{ invoice.customer.get_billing_term_display }}<br>{% if not is_special_invoice_format %}Tax Rate: {{ invoice.tax_rate }}%<br>{% endif %}Current Billing Amount: ${{ invoice.current_period_amount|floatformat:2 }}</div>
                 </div>
             </div>
 
             <div class="invoice-summary-strip">
-                <div class="summary-tile"><div class="label">Subtotal</div><div class="value">${{ invoice.subtotal|floatformat:2 }}</div></div>
-                <div class="summary-tile"><div class="label">Tax Amount</div><div class="value">${{ invoice.tax_amount|floatformat:2 }}</div></div>
+                <div class="summary-tile"><div class="label">Subtotal</div><div class="value">${% if is_special_invoice_format %}{{ special_subtotal|floatformat:2 }}{% else %}{{ invoice.subtotal|floatformat:2 }}{% endif %}</div></div>
+                <div class="summary-tile"><div class="label">{% if is_special_invoice_format %}Total tax &amp; fees{% else %}Tax Amount{% endif %}</div><div class="value">${% if is_special_invoice_format %}{{ special_tax_fees_total|floatformat:2 }}{% else %}{{ invoice.tax_amount|floatformat:2 }}{% endif %}</div></div>
                 <div class="summary-tile total"><div class="label">{% if is_latest_issued_invoice %}Current Open Balance{% else %}Open Amount{% endif %}</div><div class="value">${{ current_balance_due|floatformat:2 }}</div></div>
             </div>
 
             <div class="invoice-table-wrap">
-                <table class="invoice-table">
+                <table class="invoice-table{% if is_special_invoice_format %} special{% endif %}">
                     <thead>
                         <tr><th>Description</th><th>Billing Period</th><th class="num">Amount</th></tr>
                     </thead>
                     <tbody>
-                        {% for item in items %}
+                        {% for item in display_items %}
                         <tr>
-                            <td><div class="line-main">{{ item.description }}</div><div class="line-sub">{% if item.line_type == 'carryover' %}Past due balance carried into this invoice.{% else %}Current billing period charge.{% endif %}</div></td>
+                            <td>{% if item.description %}<div class="line-main{% if is_special_invoice_format and item.is_detail %} detail{% endif %}">{{ item.description }}</div>{% if not is_special_invoice_format %}<div class="line-sub">{% if item.line_type == 'carryover' %}Past due balance carried into this invoice.{% else %}Current billing period charge.{% endif %}</div>{% endif %}{% else %}&nbsp;{% endif %}</td>
                             <td>{{ item.period_start|date:"m/d/Y" }} - {{ item.period_end|date:"m/d/Y" }}</td>
-                            <td class="num">${{ item.amount|floatformat:2 }}</td>
+                            <td class="num">{% if item.amount is not None %}${{ item.amount|floatformat:2 }}{% endif %}</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -191,10 +194,10 @@
                 </div>
                 <div class="invoice-totals">
                     {% if invoice.partial_payment > 0 %}<div class="invoice-total-row"><span class="label">Partial Payment</span><span class="amount">-${{ invoice.partial_payment|floatformat:2 }}</span></div>{% endif %}
-                    <div class="invoice-total-row"><span class="label">Subtotal</span><span class="amount">${{ invoice.subtotal|floatformat:2 }}</span></div>
-                    <div class="invoice-total-row"><span class="label">Tax Rate</span><span class="amount">{{ invoice.tax_rate }}%</span></div>
-                    <div class="invoice-total-row"><span class="label">Tax Amount</span><span class="amount">${{ invoice.tax_amount|floatformat:2 }}</span></div>
-                    <div class="invoice-total-row"><span class="label">Original Invoice Total</span><span class="amount">${{ invoice.total_due|floatformat:2 }}</span></div>
+                    <div class="invoice-total-row"><span class="label">Subtotal</span><span class="amount">${% if is_special_invoice_format %}{{ special_subtotal|floatformat:2 }}{% else %}{{ invoice.subtotal|floatformat:2 }}{% endif %}</span></div>
+                    {% if not is_special_invoice_format %}<div class="invoice-total-row"><span class="label">Tax Rate</span><span class="amount">{{ invoice.tax_rate }}%</span></div>{% endif %}
+                    <div class="invoice-total-row"><span class="label">{% if is_special_invoice_format %}Total tax &amp; fees{% else %}Tax Amount{% endif %}</span><span class="amount">${% if is_special_invoice_format %}{{ special_tax_fees_total|floatformat:2 }}{% else %}{{ invoice.tax_amount|floatformat:2 }}{% endif %}</span></div>
+                    <div class="invoice-total-row"><span class="label">Original Invoice Total</span><span class="amount">${% if is_special_invoice_format %}{{ special_original_total|floatformat:2 }}{% else %}{{ invoice.total_due|floatformat:2 }}{% endif %}</span></div>
                     <div class="invoice-total-row grand"><span class="label">{% if is_latest_issued_invoice %}Current Open Balance{% else %}Open Amount{% endif %}</span><span class="amount">${{ current_balance_due|floatformat:2 }}</span></div>
                 </div>
             </div>

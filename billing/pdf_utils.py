@@ -2,6 +2,7 @@ import base64
 import hashlib
 import re
 from datetime import datetime, time, timedelta
+from decimal import Decimal
 from io import BytesIO
 from pathlib import Path
 from urllib.parse import quote, unquote
@@ -15,6 +16,8 @@ from customers.models import Customer
 from reports.models import InvoiceGenerationBatch, SavedInvoicePDF, SystemSetting
 
 from .models import Invoice
+
+SPECIAL_FORMAT_ACCOUNT_NUMBERS = {"5896770", "5896771", "5896773"}
 
 
 SAVED_INVOICE_FILENAME_RE = re.compile(
@@ -68,6 +71,82 @@ def portal_logo_data_uri():
     return logo_symbol_data_uri()
 
 
+def build_special_invoice_display_items(invoice, source_items):
+    billable_services = list(invoice.customer.billable_services.order_by("id")[:3])
+    term_items = source_items[-3:]
+    primary_service = billable_services[0] if len(billable_services) > 0 else None
+    secondary_service = billable_services[1] if len(billable_services) > 1 else None
+    tertiary_service = billable_services[2] if len(billable_services) > 2 else None
+
+    rows = []
+    for term_item in term_items:
+        rows.append(
+            {
+                "description": primary_service.service_name if primary_service else "",
+                "period_start": term_item.period_start if primary_service else None,
+                "period_end": term_item.period_end if primary_service else None,
+                "amount": Decimal(primary_service.billing_amount) if primary_service else None,
+                "line_type": term_item.line_type,
+                "is_detail": False,
+            }
+        )
+        for service in (secondary_service, tertiary_service):
+            rows.append(
+                {
+                    "description": service.service_name if service else "",
+                    "period_start": None,
+                    "period_end": None,
+                    "amount": Decimal(service.billing_amount) if service else None,
+                    "line_type": term_item.line_type,
+                    "is_detail": True,
+                }
+            )
+
+    while len(rows) < 10:
+        rows.append(
+            {
+                "description": "",
+                "period_start": None,
+                "period_end": None,
+                "amount": None,
+                "line_type": "",
+                "is_detail": False,
+            }
+        )
+
+    subtotal = sum(
+        (Decimal(primary_service.billing_amount) for _term_item in term_items),
+        Decimal("0.00"),
+    ) if primary_service else Decimal("0.00")
+    tax_fees_total = sum(
+        (
+            (Decimal(secondary_service.billing_amount) if secondary_service else Decimal("0.00"))
+            + (Decimal(tertiary_service.billing_amount) if tertiary_service else Decimal("0.00"))
+            for _term_item in term_items
+        ),
+        Decimal("0.00"),
+    )
+    return rows[:10], subtotal, tax_fees_total
+
+
+def build_special_current_balance_due(invoice, special_original_total, today, is_latest_issued_invoice):
+    if is_latest_issued_invoice:
+        payments_after_issue = sum(
+            (
+                Decimal(payment.amount)
+                for payment in invoice.customer.payments.filter(is_voided=False)
+                if invoice.issue_date < payment.payment_date <= today
+            ),
+            Decimal("0.00"),
+        )
+        balance = special_original_total - payments_after_issue
+        return max(balance.quantize(Decimal("0.01")), Decimal("0.00"))
+
+    allocated_amount = invoice.allocated_amount_as_of(as_of_date=today)
+    balance = special_original_total - allocated_amount
+    return max(balance.quantize(Decimal("0.01")), Decimal("0.00"))
+
+
 def build_invoice_pdf_context(invoice):
     today = timezone.localdate()
     latest_issued_invoice = (
@@ -78,6 +157,7 @@ def build_invoice_pdf_context(invoice):
     )
     source_items = list(invoice.items.order_by("period_start", "id"))
     items = list(reversed(source_items))
+    is_special_invoice_format = invoice.customer.account_number in SPECIAL_FORMAT_ACCOUNT_NUMBERS
     padded_items = [
         {
             "description": item.description,
@@ -111,6 +191,25 @@ def build_invoice_pdf_context(invoice):
             }
         )
 
+    display_items = padded_items
+    special_subtotal = Decimal(invoice.subtotal)
+    special_tax_fees_total = Decimal(invoice.tax_amount)
+    if is_special_invoice_format:
+        display_items, special_subtotal, special_tax_fees_total = build_special_invoice_display_items(invoice, source_items)
+    special_original_total = (special_subtotal + special_tax_fees_total).quantize(Decimal("0.01"))
+    current_balance_due = (
+        invoice.customer.open_balance_as_of(today)
+        if latest_issued_invoice and latest_issued_invoice.pk == invoice.pk
+        else invoice.amount_due_for_allocation(today)
+    )
+    if is_special_invoice_format:
+        current_balance_due = build_special_current_balance_due(
+            invoice,
+            special_original_total,
+            today,
+            bool(latest_issued_invoice and latest_issued_invoice.pk == invoice.pk),
+        )
+
     billing_to = invoice.customer.billing_address1
     if invoice.customer.billing_address2:
         billing_to = f"{billing_to}, {invoice.customer.billing_address2}"
@@ -127,12 +226,17 @@ def build_invoice_pdf_context(invoice):
         "invoice": invoice,
         "items": items,
         "padded_items": padded_items,
-        "current_balance_due": invoice.customer.open_balance_as_of(today) if latest_issued_invoice and latest_issued_invoice.pk == invoice.pk else invoice.amount_due_for_allocation(today),
+        "current_balance_due": current_balance_due,
         "preview_date": today,
         "is_latest_issued_invoice": bool(latest_issued_invoice and latest_issued_invoice.pk == invoice.pk),
         "logo_symbol_data_uri": logo_symbol_data_uri(),
         "billing_to_display": billing_to,
         "service_at_display": service_at,
+        "is_special_invoice_format": is_special_invoice_format,
+        "display_items": display_items,
+        "special_subtotal": special_subtotal,
+        "special_tax_fees_total": special_tax_fees_total,
+        "special_original_total": special_original_total,
     }
 
 
