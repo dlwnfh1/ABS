@@ -72,7 +72,11 @@ def portal_logo_data_uri():
 
 
 def build_special_invoice_display_items(invoice, source_items):
-    billable_services = list(invoice.customer.billable_services.order_by("id")[:3])
+    billable_services = sorted(
+        list(invoice.customer.billable_services.order_by("id")[:3]),
+        key=lambda service: (Decimal(service.billing_amount), -service.id),
+        reverse=True,
+    )
     term_items = source_items[-3:]
     primary_service = billable_services[0] if len(billable_services) > 0 else None
     secondary_service = billable_services[1] if len(billable_services) > 1 else None
