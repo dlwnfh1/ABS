@@ -2,6 +2,7 @@
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
+from urllib.parse import urlencode
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -1309,7 +1310,9 @@ def customer_statement_view(request):
                 continue
             seen_invoice_ids.add(saved.invoice_id)
             relative_path = saved.relative_path.replace("\\", "/")
-            invoice_saved_pdf_urls[saved.invoice_id] = f'{reverse("portal:saved_invoice_file")}?path={relative_path}'
+            invoice_saved_pdf_urls[saved.invoice_id] = (
+                f'{reverse("portal:saved_invoice_file")}?{urlencode({"path": relative_path})}'
+            )
         for invoice in invoices:
             invoice.saved_pdf_url = invoice_saved_pdf_urls.get(invoice.id, "")
             invoice.generated_pdf_url = reverse("portal:invoice_print", args=[invoice.id])
@@ -1376,6 +1379,7 @@ def customer_statement_send_email_view(request):
     if not result["sent_customers"] and not result["missing_email_customers"] and not result["failed"] and not result["skipped_customers"]:
         messages.warning(request, "This customer is not eligible for email delivery.")
     return redirect(f'{reverse("portal:customer_statement")}?customer={customer.pk}')
+
 
 
 
