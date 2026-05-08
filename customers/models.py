@@ -63,6 +63,10 @@ class Customer(models.Model):
     def __str__(self) -> str:
         return f"{self.name} ({self.account_number})"
 
+    @property
+    def display_account_number(self) -> str:
+        return (self.account_number or "").replace("/Starlink", "")
+
     def clean(self):
         if self.first_billing_date and self.billing_term not in dict(self.BILLING_TERM_CHOICES):
             raise ValidationError("Billing term must be one of 3, 6, 9, or 12 months.")
@@ -257,6 +261,7 @@ class Service(models.Model):
             self.is_active = False
         super().save(*args, **kwargs)
         self.customer.ensure_initial_invoice()
+
 
 
 

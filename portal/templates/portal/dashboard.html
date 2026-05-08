@@ -1,4 +1,4 @@
-{% extends "portal/base.html" %}
+﻿{% extends "portal/base.html" %}
 {% block content %}
 <div class="grid cards-4">
     <div class="card"><div class="stat-label">Ready Now</div><div class="stat-value">{{ ready_count }}</div></div>
@@ -30,7 +30,7 @@
                 <tbody>
                 {% for invoice in latest_invoices %}
                     <tr>
-                        <td class="mono">{{ invoice.invoice_number }}</td>
+                        <td class="mono">{{ invoice.display_invoice_number }}</td>
                         <td>{{ invoice.customer.name }}</td>
                         <td><a href="{% url 'portal:invoice_pdf' invoice.pk %}">PDF</a></td>
                     </tr>
@@ -43,3 +43,5 @@
     </div>
 </div>
 {% endblock %}
+
+

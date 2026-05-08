@@ -289,8 +289,8 @@
                     <div class="remit-title">Return This Slip With Payment</div>
                     <table>
                         <tr>
-                            <td width="21%" style="padding-right: 4pt;"><div class="field-label">Account #</div><div class="field-value wrap-two-lines">{{ invoice.customer.account_number }}</div></td>
-                            <td width="35%" style="padding-right: 4pt;"><div class="field-label">Invoice #</div><div class="field-value wrap-value">{{ invoice.invoice_number }}</div></td>
+                            <td width="21%" style="padding-right: 4pt;"><div class="field-label">Account #</div><div class="field-value wrap-two-lines">{{ invoice.customer.display_account_number }}</div></td>
+                            <td width="35%" style="padding-right: 4pt;"><div class="field-label">Invoice #</div><div class="field-value wrap-value">{{ invoice.display_invoice_number }}</div></td>
                             <td width="20%" style="padding-right: 4pt;"><div class="field-label">Due Date</div><div class="field-value">{{ invoice.due_date|date:"m/d/Y" }}</div></td>
                             <td width="24%"><div class="field-label">Amount Due</div><div class="field-value">${{ current_balance_due|floatformat:2 }}</div></td>
                         </tr>
@@ -332,7 +332,7 @@
                     <table class="meta-list">
                         <tr>
                             <td class="field-label">Invoice Number</td>
-                            <td class="field-value">{{ invoice.invoice_number }}</td>
+                            <td class="field-value">{{ invoice.display_invoice_number }}</td>
                         </tr>
                         <tr>
                             <td class="field-label">Issue Date</td>
@@ -404,6 +404,7 @@
     </table>
 </body>
 </html>
+
 
 
 

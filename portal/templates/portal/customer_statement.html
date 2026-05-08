@@ -1,4 +1,4 @@
-{% extends "portal/base.html" %}
+﻿{% extends "portal/base.html" %}
 {% block content %}
 <div class="card">
     <form method="get" class="form-grid">
@@ -8,7 +8,7 @@
                 <option value="">Select a customer</option>
                 {% for customer in customers %}
                     <option value="{{ customer.pk }}" {% if selected_customer_id == customer.pk %}selected{% endif %}>
-                        {{ customer.name }} ({{ customer.account_number }})
+                        {{ customer.name }} ({{ customer.display_account_number }})
                     </option>
                 {% endfor %}
             </select>
@@ -27,7 +27,7 @@
     </div>
     <div class="card">
         <div class="stat-label">Account #</div>
-        <div class="stat-value" style="font-size:1.3rem;">{{ selected_customer.account_number }}</div>
+        <div class="stat-value" style="font-size:1.3rem;">{{ selected_customer.display_account_number }}</div>
     </div>
     <div class="card">
         <div class="stat-label">Open Balance</div>
@@ -149,7 +149,7 @@
                 <tbody>
                 {% for invoice in invoices %}
                     <tr>
-                        <td class="mono">{{ invoice.invoice_number }}</td>
+                        <td class="mono">{{ invoice.display_invoice_number }}</td>
                         <td>{{ invoice.period_start|date:"m/d/Y" }} - {{ invoice.period_end|date:"m/d/Y" }}</td>
                         <td>${{ invoice.total_due }}</td>
                         <td>{{ invoice.display_status }}</td>
@@ -218,3 +218,5 @@
 </div>
 {% endif %}
 {% endblock %}
+
+

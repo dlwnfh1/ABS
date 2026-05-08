@@ -50,6 +50,10 @@ class Invoice(models.Model):
     def __str__(self) -> str:
         return self.invoice_number or f"Invoice {self.pk or 'new'}"
 
+    @property
+    def display_invoice_number(self) -> str:
+        return (self.invoice_number or "").replace("/Starlink", "")
+
     def clean(self):
         if self.period_end < self.period_start:
             raise ValidationError("Billing period end must be on or after billing period start.")
@@ -443,4 +447,6 @@ def add_months(value: date, months: int) -> date:
     month_lengths = [31, 29 if year % 4 == 0 and (year % 100 != 0 or year % 400 == 0) else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
     day = min(value.day, month_lengths[month - 1])
     return date(year, month, day)
+
+
 
