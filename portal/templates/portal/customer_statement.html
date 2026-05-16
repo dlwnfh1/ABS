@@ -189,6 +189,7 @@
                         <th>Amount</th>
                         <th>Method</th>
                         <th>Applied Invoices</th>
+                        <th>Action</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -199,14 +200,23 @@
                         <td>{{ payment.get_method_display }}</td>
                         <td>
                             {% for allocation in payment.allocations.all %}
-                                <div class="mono">{{ allocation.invoice.invoice_number }} (${{ allocation.amount }})</div>
+                                <div class="mono">{{ allocation.invoice.display_invoice_number }} (${{ allocation.amount }})</div>
                             {% empty %}
                                 -
                             {% endfor %}
                         </td>
+                        <td>
+                            <form method="post" action="{% url 'portal:payment_void' payment.pk %}" onsubmit="return confirm('Void this payment? This will recalculate the customer balance and invoice statuses.');" style="margin:0;">
+                                {% csrf_token %}
+                                <input type="hidden" name="customer" value="{{ selected_customer.pk }}">
+                                {% if show_all_invoices %}<input type="hidden" name="show_all_invoices" value="1">{% endif %}
+                                {% if show_all_payments %}<input type="hidden" name="show_all_payments" value="1">{% endif %}
+                                <button type="submit" class="btn btn-secondary" style="padding:8px 12px; white-space:nowrap;">Void Payment</button>
+                            </form>
+                        </td>
                     </tr>
                 {% empty %}
-                    <tr><td colspan="4">No payments.</td></tr>
+                    <tr><td colspan="5">No payments.</td></tr>
                 {% endfor %}
                 </tbody>
             </table>
@@ -218,5 +228,7 @@
 </div>
 {% endif %}
 {% endblock %}
+
+
 
 

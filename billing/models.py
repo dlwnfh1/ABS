@@ -156,10 +156,15 @@ class Invoice(models.Model):
             .order_by("period_start", "id")
         )
         prior_base_paid = Decimal("0.00")
+        prior_gross_outstanding = Decimal("0.00")
         for prior_invoice in prior_invoices:
             outstanding = prior_invoice.outstanding_amount_as_of(self.issue_date)
             if outstanding > Decimal("0.00"):
                 prior_base_paid += prior_invoice.base_paid_as_of(
+                    as_of_date=self.issue_date,
+                    exclude_payment_id=exclude_payment_id,
+                )
+                prior_gross_outstanding += prior_invoice.unique_amount_due_for_allocation(
                     as_of_date=self.issue_date,
                     exclude_payment_id=exclude_payment_id,
                 )
@@ -168,8 +173,10 @@ class Invoice(models.Model):
         if subtotal < Decimal("0.00"):
             subtotal = Decimal("0.00")
         tax_rate = self.customer.tax_rate
-        tax_amount = (subtotal * tax_rate / Decimal("100")).quantize(Decimal("0.01"))
-        gross_total = (subtotal + tax_amount).quantize(Decimal("0.01"))
+        gross_total = (prior_gross_outstanding + self.current_period_total).quantize(Decimal("0.01"))
+        tax_amount = (gross_total - subtotal).quantize(Decimal("0.01"))
+        if tax_amount < Decimal("0.00"):
+            tax_amount = Decimal("0.00")
         return {
             "line_total": Decimal(line_total).quantize(Decimal("0.01")),
             "partial_payment": prior_base_paid.quantize(Decimal("0.01")),

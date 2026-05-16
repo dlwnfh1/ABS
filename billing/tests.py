@@ -1,4 +1,4 @@
-from datetime import date
+﻿from datetime import date
 from decimal import Decimal
 from django.test import TestCase
 from django.utils import timezone
@@ -179,6 +179,32 @@ class BillingWorkflowTests(TestCase):
 
         self.assertEqual(self.customer.open_balance_as_of(date(2026, 3, 23)), Decimal("175.00"))
 
+    def test_cumulative_statement_uses_sum_of_rounded_term_totals(self):
+        customer = Customer.objects.create(
+            name="Rounding Customer",
+            account_number="R300",
+            billing_address1="3 Main St",
+            tax_rate=Decimal("8.875"),
+            billing_term=3,
+            first_billing_date=date(2022, 1, 1),
+            email_address="345-678-9012",
+        )
+        Service.objects.create(
+            customer=customer,
+            service_name="Monitoring Service",
+            service_address1="3 Main St",
+            activation_date=date(2022, 1, 1),
+            billing_amount=Decimal("150.00"),
+        )
+
+        first_invoice = Invoice.objects.get(customer=customer, auto_generated=False)
+        second_invoice = first_invoice.generate_next_invoice()
+        third_invoice = second_invoice.generate_next_invoice()
+
+        self.assertEqual(first_invoice.current_period_total, Decimal("163.31"))
+        self.assertEqual(second_invoice.total_due, Decimal("326.62"))
+        self.assertEqual(third_invoice.total_due, Decimal("489.93"))
+
     def test_generate_due_invoices_only_after_issue_date(self):
         invoice = Invoice.objects.get(customer=self.customer, auto_generated=False)
         generated = Invoice.generate_due_invoices(as_of_date=date(2026, 3, 16))
@@ -305,3 +331,4 @@ class BillingWorkflowTests(TestCase):
         self.assertEqual(context["current_balance_due"], Decimal("530.37"))
 
 # Create your tests here.
+

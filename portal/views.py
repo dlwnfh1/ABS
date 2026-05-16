@@ -6,6 +6,7 @@ from urllib.parse import urlencode
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.views.decorators.http import require_POST
 from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db import transaction
@@ -786,6 +787,28 @@ def payment_receipt_print_view(request, payment_id):
 
 
 @login_required(login_url="portal:login")
+@require_POST
+def payment_void_view(request, payment_id):
+    payment = get_object_or_404(Payment.objects.select_related("customer"), pk=payment_id)
+    customer_id = request.POST.get("customer") or str(payment.customer_id)
+    show_all_invoices = request.POST.get("show_all_invoices") == "1"
+    show_all_payments = request.POST.get("show_all_payments") == "1"
+
+    if payment.is_voided:
+        messages.warning(request, "This payment is already voided.")
+    else:
+        payment.void("Voided from portal payment history")
+        messages.success(request, f"Payment of ${payment.amount:.2f} was voided.")
+
+    query = [f"customer={customer_id}"]
+    if show_all_invoices:
+        query.append("show_all_invoices=1")
+    if show_all_payments:
+        query.append("show_all_payments=1")
+    return redirect(f'{reverse("portal:customer_statement")}?{"&".join(query)}')
+
+
+@login_required(login_url="portal:login")
 def invoice_list_view(request):
     query = (request.GET.get("q") or "").strip()
     latest_only = request.GET.get("latest", "1") != "0"
@@ -1379,6 +1402,7 @@ def customer_statement_send_email_view(request):
     if not result["sent_customers"] and not result["missing_email_customers"] and not result["failed"] and not result["skipped_customers"]:
         messages.warning(request, "This customer is not eligible for email delivery.")
     return redirect(f'{reverse("portal:customer_statement")}?customer={customer.pk}')
+
 
 
 

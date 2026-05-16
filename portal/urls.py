@@ -1,4 +1,4 @@
-from django.contrib.auth.views import LoginView, LogoutView, PasswordChangeDoneView, PasswordChangeView
+﻿from django.contrib.auth.views import LoginView, LogoutView, PasswordChangeDoneView, PasswordChangeView
 from django.urls import path
 from django.urls import reverse_lazy
 
@@ -30,6 +30,7 @@ urlpatterns = [
     path("payments/<int:payment_id>/attachment/", views.payment_attachment_view, name="payment_attachment"),
     path("payments/<int:payment_id>/receipt/pdf/", views.payment_receipt_pdf_view, name="payment_receipt_pdf"),
     path("payments/<int:payment_id>/receipt/print/", views.payment_receipt_print_view, name="payment_receipt_print"),
+    path("payments/<int:payment_id>/void/", views.payment_void_view, name="payment_void"),
     path("invoices/", views.invoice_list_view, name="invoice_list"),
     path("invoices/saved/", views.saved_invoice_list_view, name="saved_invoice_list"),
     path("invoices/saved/file/", views.saved_invoice_file_view, name="saved_invoice_file"),
@@ -49,3 +50,4 @@ urlpatterns = [
     path("reports/customer-statement/", views.customer_statement_view, name="customer_statement"),
     path("reports/customer-statement/send-email/", views.customer_statement_send_email_view, name="customer_statement_send_email"),
 ]
+
