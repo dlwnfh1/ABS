@@ -43,6 +43,7 @@ urlpatterns = [
     path("reports/", views.report_index_view, name="report_index"),
     path("reports/ar-aging/", views.ar_aging_view, name="ar_aging"),
     path("reports/payments/", views.payments_report_view, name="payments_report"),
+    path("reports/accountant-tax/", views.accountant_tax_report_view, name="accountant_tax_report"),
     path("reports/overdue-customers/", views.overdue_customers_view, name="overdue_customers"),
     path("reports/upcoming-billing/", views.upcoming_billing_view, name="upcoming_billing"),
     path("reports/non-billable-customers/", views.non_billable_customers_view, name="non_billable_customers"),

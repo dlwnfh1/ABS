@@ -1,4 +1,6 @@
-﻿from calendar import monthrange
+import csv
+import re
+from calendar import monthrange
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -31,7 +33,7 @@ from billing.pdf_utils import (
     render_invoice_pdf_bytes,
 )
 from customers.models import Customer, Service
-from payments.models import Payment, PaymentAllocation
+from payments.models import Payment, PaymentAllocation, PaymentSettlement
 from reports.models import InvoiceGenerationBatch, SavedInvoicePDF, SystemSetting
 from reports.notifications import send_saved_invoice_emails
 
@@ -43,7 +45,7 @@ def _format_auto_ach_review_summary(customers):
         return ""
     visible = [customer.name for customer in customers[:5]]
     if len(customers) > 5:
-        visible.append(f"외 {len(customers) - 5}명")
+        visible.append(f"�� {len(customers) - 5}��")
     return ", ".join(visible)
 
 
@@ -266,18 +268,176 @@ def _build_ar_aging_data():
 
 def _build_payments_report_data(date_from, date_to):
     payments = list(
-        Payment.objects.select_related("customer")
+        Payment.objects.select_related("customer", "settlement")
         .filter(is_voided=False, payment_date__gte=date_from, payment_date__lte=date_to)
-        .order_by("-payment_date", "-id")
+        .order_by("method", "-payment_date", "-id")
     )
     method_totals = {}
+    method_groups = []
     total_amount = Decimal("0.00")
+    total_count = len(payments)
+    ordered_methods = [label for _, label in Payment.METHOD_CHOICES]
+    grouped = {label: [] for label in ordered_methods}
+
     for payment in payments:
         label = payment.get_method_display()
         method_totals.setdefault(label, Decimal("0.00"))
         method_totals[label] += payment.amount
         total_amount += payment.amount
-    return payments, method_totals, total_amount
+        grouped.setdefault(label, []).append(payment)
+
+    for label in ordered_methods:
+        rows = grouped.get(label) or []
+        if not rows:
+            continue
+        method_groups.append(
+            {
+                "label": label,
+                "payments": rows,
+                "count": len(rows),
+                "total_amount": method_totals[label],
+            }
+        )
+
+    return {
+        "payments": payments,
+        "method_totals": method_totals,
+        "method_groups": method_groups,
+        "total_amount": total_amount,
+        "total_count": total_count,
+    }
+
+
+STATE_PATTERN = re.compile(r"\b([A-Z]{2})\b(?:\s+\d{5}(?:-\d{4})?)?$")
+
+
+def _extract_state_from_address(address_line):
+    value = (address_line or "").upper().replace(",", " ").strip()
+    if not value:
+        return ""
+    match = STATE_PATTERN.search(value)
+    if match:
+        return match.group(1)
+    parts = [part for part in value.split() if part]
+    for part in reversed(parts):
+        if len(part) == 2 and part.isalpha():
+            return part
+    return ""
+
+
+def _customer_reporting_state(customer):
+    service = customer.services.filter(is_active=True).order_by("id").first()
+    state = _extract_state_from_address(getattr(service, "service_address2", ""))
+    if not state:
+        state = _extract_state_from_address(customer.billing_address2)
+    return state
+
+
+def _state_bucket_for_customer(customer):
+    state = _customer_reporting_state(customer)
+    if state == "NY":
+        return "NY"
+    if state == "NJ":
+        return "NJ"
+    return "Other"
+
+
+def _split_amount_by_tax_rate(gross_amount, tax_rate):
+    gross_amount = Decimal(gross_amount or Decimal("0.00")).quantize(Decimal("0.01"))
+    tax_rate = Decimal(tax_rate or Decimal("0.00"))
+    if tax_rate <= Decimal("0.00"):
+        return gross_amount, Decimal("0.00")
+    divisor = Decimal("1.00") + (tax_rate / Decimal("100.00"))
+    subtotal = (gross_amount / divisor).quantize(Decimal("0.01"))
+    tax = (gross_amount - subtotal).quantize(Decimal("0.01"))
+    return subtotal, tax
+
+
+def _payment_recognized_breakdown(payment):
+    try:
+        settlement = payment.settlement
+    except PaymentSettlement.DoesNotExist:
+        settlement = None
+
+    if settlement:
+        return {
+            "gross": Decimal(payment.amount).quantize(Decimal("0.01")),
+            "subtotal": Decimal(settlement.recognized_subtotal).quantize(Decimal("0.01")),
+            "tax": Decimal(settlement.recognized_tax).quantize(Decimal("0.01")),
+            "settlement": settlement,
+        }
+
+    subtotal = Decimal("0.00")
+    tax = Decimal("0.00")
+    allocations = list(payment.allocations.select_related("invoice").all())
+    for allocation in allocations:
+        alloc_subtotal, alloc_tax = _split_amount_by_tax_rate(allocation.amount, allocation.invoice.tax_rate)
+        subtotal += alloc_subtotal
+        tax += alloc_tax
+
+    gross = Decimal(payment.amount).quantize(Decimal("0.01"))
+    subtotal = subtotal.quantize(Decimal("0.01"))
+    tax = tax.quantize(Decimal("0.01"))
+    delta = (gross - subtotal - tax).quantize(Decimal("0.01"))
+    if delta != Decimal("0.00"):
+        tax = (tax + delta).quantize(Decimal("0.01"))
+
+    return {
+        "gross": gross,
+        "subtotal": subtotal,
+        "tax": tax,
+        "settlement": None,
+    }
+
+
+def _build_accountant_report_data(date_from, date_to, exclude_cash=False):
+    payments = list(
+        Payment.objects.select_related("customer", "settlement")
+        .prefetch_related("allocations__invoice", "customer__services")
+        .filter(is_voided=False, payment_date__gte=date_from, payment_date__lte=date_to)
+        .order_by("payment_date", "id")
+    )
+    if exclude_cash:
+        payments = [payment for payment in payments if payment.method != Payment.METHOD_CASH]
+
+    buckets = {
+        "NY": {"label": "NY", "subtotal": Decimal("0.00"), "tax": Decimal("0.00"), "gross": Decimal("0.00"), "count": 0, "rows": []},
+        "NJ": {"label": "NJ", "subtotal": Decimal("0.00"), "tax": Decimal("0.00"), "gross": Decimal("0.00"), "count": 0, "rows": []},
+        "Other": {"label": "Other", "subtotal": Decimal("0.00"), "tax": Decimal("0.00"), "gross": Decimal("0.00"), "count": 0, "rows": []},
+    }
+    totals = {"subtotal": Decimal("0.00"), "tax": Decimal("0.00"), "gross": Decimal("0.00"), "count": 0}
+
+    for payment in payments:
+        bucket_key = _state_bucket_for_customer(payment.customer)
+        breakdown = _payment_recognized_breakdown(payment)
+        state_value = _customer_reporting_state(payment.customer) or "-"
+        row = {
+            "payment": payment,
+            "state": state_value,
+            "bucket": bucket_key,
+            "subtotal": breakdown["subtotal"],
+            "tax": breakdown["tax"],
+            "gross": breakdown["gross"],
+            "settlement": breakdown["settlement"],
+        }
+        bucket = buckets[bucket_key]
+        bucket["rows"].append(row)
+        bucket["subtotal"] += row["subtotal"]
+        bucket["tax"] += row["tax"]
+        bucket["gross"] += row["gross"]
+        bucket["count"] += 1
+        totals["subtotal"] += row["subtotal"]
+        totals["tax"] += row["tax"]
+        totals["gross"] += row["gross"]
+        totals["count"] += 1
+
+    bucket_list = [buckets[key] for key in ("NY", "NJ", "Other")]
+    return {
+        "bucket_groups": bucket_list,
+        "totals": totals,
+        "payments": payments,
+        "exclude_cash": exclude_cash,
+    }
 
 
 def _build_overdue_customers_data():
@@ -650,6 +810,7 @@ def customer_edit_view(request, customer_id):
 def quick_payment_view(request):
     selected_customer = None
     preview = None
+    settlement_preview = None
     saved_payment = None
     action = "preview"
 
@@ -667,11 +828,26 @@ def quick_payment_view(request):
         action = request.POST.get("action", "preview")
         if form.is_valid():
             selected_customer = form.cleaned_data["customer"]
+            payment_date = form.cleaned_data["payment_date"]
+            amount = form.cleaned_data["amount"]
+            settlement_mode = form.cleaned_data.get("settlement_mode") or "normal"
             preview = Payment.allocation_preview(
                 selected_customer,
-                form.cleaned_data["payment_date"],
-                form.cleaned_data["amount"],
+                payment_date,
+                amount,
             )
+            if settlement_mode == PaymentSettlement.MODE_TAX_INCLUSIVE:
+                settlement_preview = PaymentSettlement.tax_inclusive_preview(
+                    selected_customer,
+                    payment_date,
+                    amount,
+                )
+            elif settlement_mode == PaymentSettlement.MODE_CASH_TAX_WAIVED:
+                settlement_preview = PaymentSettlement.cash_tax_waived_preview(
+                    selected_customer,
+                    payment_date,
+                    amount,
+                )
             if action == "preview" and form.cleaned_data.get("attachment_file"):
                 messages.info(
                     request,
@@ -679,14 +855,25 @@ def quick_payment_view(request):
                 )
             if action in {"save", "save_new"}:
                 try:
-                    payment = Payment.objects.create(
-                        customer=selected_customer,
-                        payment_date=form.cleaned_data["payment_date"],
-                        amount=form.cleaned_data["amount"],
-                        method=form.cleaned_data["method"],
-                        reference_number=form.cleaned_data["reference_number"],
-                        note=form.cleaned_data["note"],
-                    )
+                    with transaction.atomic():
+                        payment = Payment.objects.create(
+                            customer=selected_customer,
+                            payment_date=payment_date,
+                            amount=amount,
+                            method=form.cleaned_data["method"],
+                            reference_number=form.cleaned_data["reference_number"],
+                            note=form.cleaned_data["note"],
+                        )
+                        if settlement_mode == PaymentSettlement.MODE_TAX_INCLUSIVE:
+                            PaymentSettlement.create_tax_inclusive_full_settlement(
+                                payment,
+                                note=form.cleaned_data["note"],
+                            )
+                        elif settlement_mode == PaymentSettlement.MODE_CASH_TAX_WAIVED:
+                            PaymentSettlement.create_cash_tax_waived_settlement(
+                                payment,
+                                note=form.cleaned_data["note"],
+                            )
                 except ValidationError as exc:
                     for field, errors in exc.message_dict.items():
                         if field == "__all__":
@@ -697,15 +884,21 @@ def quick_payment_view(request):
                                 form.add_error(field, error)
                 else:
                     upload = form.cleaned_data.get("attachment_file")
+                    if settlement_mode == PaymentSettlement.MODE_TAX_INCLUSIVE:
+                        success_message = "Payment saved with tax-inclusive settlement."
+                    elif settlement_mode == PaymentSettlement.MODE_CASH_TAX_WAIVED:
+                        success_message = "Payment saved with cash tax-waived settlement."
+                    else:
+                        success_message = "Payment saved successfully."
                     if upload:
                         try:
                             _save_payment_attachment(payment, upload)
                         except ValidationError as exc:
                             messages.warning(request, str(exc))
                         else:
-                            messages.success(request, "Payment saved and attachment uploaded.")
+                            messages.success(request, f"{success_message} Attachment uploaded.")
                     else:
-                        messages.success(request, "Payment saved successfully.")
+                        messages.success(request, success_message)
                     if action == "save":
                         return redirect(reverse("portal:customer_list"))
                     return redirect(
@@ -718,7 +911,7 @@ def quick_payment_view(request):
 
     saved_payment_id = request.GET.get("saved_payment")
     if saved_payment_id and saved_payment_id.isdigit():
-        saved_payment = Payment.objects.filter(pk=saved_payment_id).select_related("customer").first()
+        saved_payment = Payment.objects.filter(pk=saved_payment_id).select_related("customer", "settlement").first()
         if saved_payment:
             selected_customer = saved_payment.customer
 
@@ -731,6 +924,7 @@ def quick_payment_view(request):
         selected_customer=selected_customer,
         customer_summary=customer_summary,
         preview=preview,
+        settlement_preview=settlement_preview,
         action=action,
         saved_payment=saved_payment,
         saved_receipt_pdf_url=reverse("portal:payment_receipt_pdf", args=[saved_payment.pk]) if saved_payment else "",
@@ -741,10 +935,9 @@ def quick_payment_view(request):
     )
     return render(request, "portal/quick_payment.html", context)
 
-
 @login_required(login_url="portal:login")
 def payment_attachment_view(request, payment_id):
-    payment = get_object_or_404(Payment.objects.select_related("customer"), pk=payment_id)
+    payment = get_object_or_404(Payment.objects.select_related("customer", "settlement"), pk=payment_id)
     if request.method == "POST":
         upload = request.FILES.get("attachment_file")
         if not upload:
@@ -768,7 +961,7 @@ def payment_attachment_view(request, payment_id):
 
 @login_required(login_url="portal:login")
 def payment_receipt_pdf_view(request, payment_id):
-    payment = get_object_or_404(Payment.objects.select_related("customer"), pk=payment_id)
+    payment = get_object_or_404(Payment.objects.select_related("customer", "settlement"), pk=payment_id)
     pdf_bytes = _render_receipt_pdf_bytes(payment)
     if not pdf_bytes:
         messages.error(request, "Receipt PDF generation failed.")
@@ -778,7 +971,7 @@ def payment_receipt_pdf_view(request, payment_id):
 
 @login_required(login_url="portal:login")
 def payment_receipt_print_view(request, payment_id):
-    payment = get_object_or_404(Payment.objects.select_related("customer"), pk=payment_id)
+    payment = get_object_or_404(Payment.objects.select_related("customer", "settlement"), pk=payment_id)
     pdf_bytes = _render_receipt_pdf_bytes(payment)
     if not pdf_bytes:
         messages.error(request, "Receipt PDF generation failed.")
@@ -789,7 +982,7 @@ def payment_receipt_print_view(request, payment_id):
 @login_required(login_url="portal:login")
 @require_POST
 def payment_void_view(request, payment_id):
-    payment = get_object_or_404(Payment.objects.select_related("customer"), pk=payment_id)
+    payment = get_object_or_404(Payment.objects.select_related("customer", "settlement"), pk=payment_id)
     customer_id = request.POST.get("customer") or str(payment.customer_id)
     show_all_invoices = request.POST.get("show_all_invoices") == "1"
     show_all_payments = request.POST.get("show_all_payments") == "1"
@@ -1084,13 +1277,14 @@ def invoice_print_view(request, invoice_id):
 @login_required(login_url="portal:login")
 def report_index_view(request):
     report_links = [
-        {"title": "A/R by Billing Term (기간별 미수금 현황)", "description": "Open balances grouped by billing term overdue count.", "url": reverse("portal:ar_aging")},
-        {"title": "Payment Activity Report (페이먼 보고서)", "description": "Payment activity for a selected date range.", "url": reverse("portal:payments_report")},
-        {"title": "Past-Due Customers (연체 고객 현황)", "description": "Customers with overdue invoices and highest overdue term count.", "url": reverse("portal:overdue_customers")},
-        {"title": "Upcoming Billing Schedule (인보이스 일정)", "description": "Customers whose invoices are ready now or due soon.", "url": reverse("portal:upcoming_billing")},
-        {"title": "Non-Billable Customers (FREE 고객 현황)", "description": "Active customers and services that are on billing hold or marked complimentary.", "url": reverse("portal:non_billable_customers")},
-        {"title": "Auto ACH Review (자동 ACH 점검 대상)", "description": "Auto ACH customers whose payments should be reviewed before the next billing issue date.", "url": reverse("portal:auto_ach_review")},
-        {"title": "Customer Statement (고객별 명세서)", "description": "Invoice and payment history for a single customer.", "url": reverse("portal:customer_statement")},
+        {"title": "A/R by Billing Term", "description": "Open balances grouped by billing term overdue count.", "url": reverse("portal:ar_aging")},
+        {"title": "Payment Activity Report", "description": "Payment activity for a selected date range.", "url": reverse("portal:payments_report")},
+        {"title": "Accountant Tax Report", "description": "Payments grouped into NY, NJ, and Other with service and tax totals.", "url": reverse("portal:accountant_tax_report")},
+        {"title": "Past-Due Customers", "description": "Customers with overdue invoices and highest overdue term count.", "url": reverse("portal:overdue_customers")},
+        {"title": "Upcoming Billing Schedule", "description": "Customers whose invoices are ready now or due soon.", "url": reverse("portal:upcoming_billing")},
+        {"title": "Non-Billable Customers", "description": "Active customers and services that are on billing hold or marked complimentary.", "url": reverse("portal:non_billable_customers")},
+        {"title": "Auto ACH Review", "description": "Auto ACH customers whose payments should be reviewed before the next billing issue date.", "url": reverse("portal:auto_ach_review")},
+        {"title": "Customer Statement", "description": "Invoice and payment history for a single customer.", "url": reverse("portal:customer_statement")},
     ]
     return render(request, "portal/report_index.html", _portal_context(request, active_nav="reports", title="Reports", report_links=report_links))
 
@@ -1105,7 +1299,7 @@ def ar_aging_view(request):
         _portal_context(
             request,
             active_nav="reports",
-            title="A/R by Billing Term (기간별 미수금 현황)",
+            title="A/R by Billing Term (�Ⱓ�� �̼��� ��Ȳ)",
             report_date=report_date,
             rows=page_obj.object_list,
             totals=totals,
@@ -1117,27 +1311,155 @@ def ar_aging_view(request):
 
 
 @login_required(login_url="portal:login")
+@login_required(login_url="portal:login")
 def payments_report_view(request):
     today = timezone.localdate()
     date_from = _parse_iso_date(request.GET.get("date_from"), today.replace(day=1))
     date_to = _parse_iso_date(request.GET.get("date_to"), today)
-    payments, method_totals, total_amount = _build_payments_report_data(date_from, date_to)
-    page_obj, page_query, page_numbers = _paginate_items(request, payments, 50)
+    report = _build_payments_report_data(date_from, date_to)
+
+    if (request.GET.get("export") or "").lower() == "csv":
+        response = HttpResponse(content_type="text/csv; charset=utf-8")
+        response["Content-Disposition"] = f'attachment; filename="payments-{date_from:%Y%m%d}-{date_to:%Y%m%d}.csv"'
+        writer = csv.writer(response)
+        writer.writerow(["Date From", date_from.strftime("%m/%d/%Y"), "Date To", date_to.strftime("%m/%d/%Y")])
+        writer.writerow(["Total Received", f'{report["total_amount"]:.2f}', "Payment Count", report["total_count"]])
+        writer.writerow([])
+        writer.writerow(["Method", "Method Total"])
+        for method, amount in report["method_totals"].items():
+            writer.writerow([method, f'{amount:.2f}'])
+        writer.writerow([])
+        writer.writerow([
+            "Payment Date",
+            "Customer",
+            "Account Number",
+            "Method",
+            "Amount",
+            "Reference Number",
+            "Note",
+            "Settlement Mode",
+            "Recognized Subtotal",
+            "Recognized Tax",
+            "Adjustment Subtotal",
+            "Adjustment Tax",
+        ])
+        for payment in report["payments"]:
+            try:
+                settlement = payment.settlement
+            except PaymentSettlement.DoesNotExist:
+                settlement = None
+            writer.writerow([
+                payment.payment_date.strftime("%m/%d/%Y"),
+                payment.customer.name,
+                payment.customer.display_account_number,
+                payment.get_method_display(),
+                f'{payment.amount:.2f}',
+                payment.reference_number,
+                payment.note,
+                settlement.get_mode_display() if settlement else "",
+                f'{settlement.recognized_subtotal:.2f}' if settlement else "",
+                f'{settlement.recognized_tax:.2f}' if settlement else "",
+                f'{settlement.adjustment_subtotal:.2f}' if settlement else "",
+                f'{settlement.adjustment_tax:.2f}' if settlement else "",
+            ])
+        return response
+
     return render(
         request,
         "portal/payments_report.html",
         _portal_context(
             request,
             active_nav="reports",
-            title="Payment Activity Report (페이먼 보고서)",
+            title="Payment Activity Report",
             date_from=date_from,
             date_to=date_to,
-            payments=page_obj.object_list,
-            method_totals=method_totals,
-            total_amount=total_amount,
-            page_obj=page_obj,
-            page_query=page_query,
-            page_numbers=page_numbers,
+            payments=report["payments"],
+            method_totals=report["method_totals"],
+            method_groups=report["method_groups"],
+            total_amount=report["total_amount"],
+            total_count=report["total_count"],
+        ),
+    )
+
+
+@login_required(login_url="portal:login")
+def accountant_tax_report_view(request):
+    today = timezone.localdate()
+    date_from = _parse_iso_date(request.GET.get("date_from"), today.replace(day=1))
+    date_to = _parse_iso_date(request.GET.get("date_to"), today)
+    exclude_cash = (request.GET.get("exclude_cash") or "").lower() in {"1", "true", "on", "yes"}
+    report = _build_accountant_report_data(date_from, date_to, exclude_cash=exclude_cash)
+
+    if (request.GET.get("export") or "").lower() == "csv":
+        response = HttpResponse(content_type="text/csv; charset=utf-8")
+        response["Content-Disposition"] = f'attachment; filename="accountant-tax-report-{date_from:%Y%m%d}-{date_to:%Y%m%d}.csv"'
+        writer = csv.writer(response)
+        writer.writerow(["Date From", date_from.strftime("%m/%d/%Y"), "Date To", date_to.strftime("%m/%d/%Y")])
+        writer.writerow(["Exclude Cash", "Yes" if exclude_cash else "No"])
+        writer.writerow([])
+        writer.writerow(["Bucket", "Service Total", "Tax Total", "Gross Total", "Payment Count"])
+        for group in report["bucket_groups"]:
+            writer.writerow([
+                group["label"],
+                f'{group["subtotal"]:.2f}',
+                f'{group["tax"]:.2f}',
+                f'{group["gross"]:.2f}',
+                group["count"],
+            ])
+        writer.writerow([
+            "Grand Total",
+            f'{report["totals"]["subtotal"]:.2f}',
+            f'{report["totals"]["tax"]:.2f}',
+            f'{report["totals"]["gross"]:.2f}',
+            report["totals"]["count"],
+        ])
+        writer.writerow([])
+        writer.writerow([
+            "Payment Date",
+            "Customer",
+            "Account Number",
+            "State",
+            "Bucket",
+            "Method",
+            "Gross Received",
+            "Service Portion",
+            "Tax Portion",
+            "Settlement Mode",
+            "Reference Number",
+            "Note",
+        ])
+        for group in report["bucket_groups"]:
+            for row in group["rows"]:
+                payment = row["payment"]
+                settlement = row["settlement"]
+                writer.writerow([
+                    payment.payment_date.strftime("%m/%d/%Y"),
+                    payment.customer.name,
+                    payment.customer.display_account_number,
+                    row["state"],
+                    row["bucket"],
+                    payment.get_method_display(),
+                    f'{row["gross"]:.2f}',
+                    f'{row["subtotal"]:.2f}',
+                    f'{row["tax"]:.2f}',
+                    settlement.get_mode_display() if settlement else "",
+                    payment.reference_number,
+                    payment.note,
+                ])
+        return response
+
+    return render(
+        request,
+        "portal/accountant_tax_report.html",
+        _portal_context(
+            request,
+            active_nav="reports",
+            title="Accountant Tax Report",
+            date_from=date_from,
+            date_to=date_to,
+            exclude_cash=exclude_cash,
+            bucket_groups=report["bucket_groups"],
+            totals=report["totals"],
         ),
     )
 
@@ -1152,7 +1474,7 @@ def overdue_customers_view(request):
         _portal_context(
             request,
             active_nav="reports",
-            title="Past-Due Customers (연체 고객 현황)",
+            title="Past-Due Customers",
             report_date=report_date,
             rows=page_obj.object_list,
             totals=totals,
@@ -1173,7 +1495,7 @@ def upcoming_billing_view(request):
         _portal_context(
             request,
             active_nav="reports",
-            title="Upcoming Billing Schedule (인보이스 일정)",
+            title="Upcoming Billing Schedule",
             report_date=report_date,
             horizon_date=horizon_date,
             rows=page_obj.object_list,
@@ -1232,7 +1554,7 @@ def non_billable_customers_view(request):
         _portal_context(
             request,
             active_nav="reports",
-            title="Non-Billable Customers (FREE 고객 현황)",
+            title="Non-Billable Customers",
             report_date=report_date,
             rows=page_obj.object_list,
             totals=totals,
@@ -1284,7 +1606,7 @@ def auto_ach_review_view(request):
         _portal_context(
             request,
             active_nav="reports",
-            title="Auto ACH Review (자동 ACH 점검 대상)",
+            title="Auto ACH Review",
             report_date=report_date,
             scope=scope,
             rows=page_obj.object_list,
@@ -1314,12 +1636,22 @@ def customer_statement_view(request):
     if selected_customer:
         today = timezone.localdate()
         invoice_qs = selected_customer.invoices.exclude(status=Invoice.STATUS_VOID).order_by("-period_start", "-id")
-        payment_qs = selected_customer.payments.filter(is_voided=False).prefetch_related("allocations__invoice").order_by("-payment_date", "-id")
+        payment_qs = (
+            selected_customer.payments.filter(is_voided=False)
+            .select_related("settlement")
+            .prefetch_related("allocations__invoice", "settlement__allocations__invoice")
+            .order_by("-payment_date", "-id")
+        )
         primary_service = selected_customer.services.order_by("-is_active", "id").first()
         invoice_count = invoice_qs.count()
         payment_count = payment_qs.count()
         invoices = list(invoice_qs if show_all_invoices else invoice_qs[:25])
         payments = list(payment_qs if show_all_payments else payment_qs[:25])
+        for payment in payments:
+            try:
+                payment.settlement_record = payment.settlement
+            except PaymentSettlement.DoesNotExist:
+                payment.settlement_record = None
         open_balance = selected_customer.open_balance_as_of(today)
         last_payment = payment_qs.first()
         saved_qs = (
@@ -1345,7 +1677,7 @@ def customer_statement_view(request):
         _portal_context(
             request,
             active_nav="reports",
-            title="Customer Statement (고객별 명세서)",
+            title="Customer Statement",
             customers=customers,
             selected_customer=selected_customer,
             selected_customer_id=int(customer_id) if customer_id and customer_id.isdigit() else None,
@@ -1364,7 +1696,6 @@ def customer_statement_view(request):
             primary_service=primary_service,
         ),
     )
-
 
 @login_required(login_url="portal:login")
 def customer_statement_send_email_view(request):
@@ -1402,6 +1733,15 @@ def customer_statement_send_email_view(request):
     if not result["sent_customers"] and not result["missing_email_customers"] and not result["failed"] and not result["skipped_customers"]:
         messages.warning(request, "This customer is not eligible for email delivery.")
     return redirect(f'{reverse("portal:customer_statement")}?customer={customer.pk}')
+
+
+
+
+
+
+
+
+
 
 
 

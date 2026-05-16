@@ -88,12 +88,12 @@ class Invoice(models.Model):
             return "Draft"
 
         current_total = self.current_period_total
-        allocated_to_self = self.allocated_amount_as_of()
+        resolved_to_self = self.allocated_amount_as_of() + self.settlement_adjusted_amount_as_of()
         if current_total <= Decimal("0.00"):
             return self.get_status_display()
-        if allocated_to_self >= current_total:
+        if resolved_to_self >= current_total:
             return "Paid"
-        if allocated_to_self > Decimal("0.00"):
+        if resolved_to_self > Decimal("0.00"):
             return "Partially Paid"
         return "Issued"
 
@@ -139,9 +139,19 @@ class Invoice(models.Model):
         total = allocations.aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
         return Decimal(total).quantize(Decimal("0.01"))
 
+    def settlement_adjusted_amount_as_of(self, as_of_date=None, exclude_payment_id=None) -> Decimal:
+        allocations = self.settlement_allocations.filter(settlement__payment__is_voided=False)
+        if as_of_date:
+            allocations = allocations.filter(settlement__payment__payment_date__lte=as_of_date)
+        if exclude_payment_id:
+            allocations = allocations.exclude(settlement__payment_id=exclude_payment_id)
+        total = allocations.aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
+        return Decimal(total).quantize(Decimal("0.01"))
+
     def base_paid_as_of(self, as_of_date=None, exclude_payment_id=None) -> Decimal:
         allocated = self.allocated_amount_as_of(as_of_date=as_of_date, exclude_payment_id=exclude_payment_id)
-        return min(self.current_period_amount, allocated).quantize(Decimal("0.01"))
+        settled = self.settlement_adjusted_amount_as_of(as_of_date=as_of_date, exclude_payment_id=exclude_payment_id)
+        return min(self.current_period_amount, allocated + settled).quantize(Decimal("0.01"))
 
     def outstanding_amount_as_of(self, as_of_date: date) -> Decimal:
         outstanding = self.current_period_amount - self.base_paid_as_of(as_of_date=as_of_date)
@@ -188,7 +198,8 @@ class Invoice(models.Model):
 
     def unique_amount_due_for_allocation(self, as_of_date=None, exclude_payment_id=None) -> Decimal:
         allocated = self.allocated_amount_as_of(as_of_date=as_of_date, exclude_payment_id=exclude_payment_id)
-        due = self.current_period_total - allocated
+        settled = self.settlement_adjusted_amount_as_of(as_of_date=as_of_date, exclude_payment_id=exclude_payment_id)
+        due = self.current_period_total - allocated - settled
         return max(due.quantize(Decimal("0.01")), Decimal("0.00"))
 
     def amount_due_for_allocation(self, as_of_date=None, exclude_payment_id=None) -> Decimal:
@@ -236,12 +247,12 @@ class Invoice(models.Model):
         self.subtotal = totals["subtotal"]
         self.tax_rate = totals["tax_rate"]
         self.tax_amount = totals["tax_amount"]
-        allocated_to_self = self.allocated_amount_as_of()
-        self.total_due = max((totals["gross_total"] - allocated_to_self).quantize(Decimal("0.01")), Decimal("0.00"))
+        resolved_to_self = self.allocated_amount_as_of() + self.settlement_adjusted_amount_as_of()
+        self.total_due = max((totals["gross_total"] - resolved_to_self).quantize(Decimal("0.01")), Decimal("0.00"))
         if self.status != self.STATUS_VOID:
             if self.total_due <= Decimal("0.00"):
                 self.status = self.STATUS_PAID
-            elif allocated_to_self > Decimal("0.00"):
+            elif resolved_to_self > Decimal("0.00"):
                 self.status = self.STATUS_PARTIAL
             else:
                 self.status = self.STATUS_ISSUED

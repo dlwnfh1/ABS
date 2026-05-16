@@ -1,4 +1,4 @@
-﻿{% extends "portal/base.html" %}
+{% extends "portal/base.html" %}
 {% block content %}
 <div class="card">
     <form method="get" class="form-grid">
@@ -204,6 +204,16 @@
                             {% empty %}
                                 -
                             {% endfor %}
+                            {% if payment.settlement_record %}
+                                <div style="margin-top:8px; padding-top:8px; border-top:1px solid #eef2f6;">
+                                    <div><strong>Settlement:</strong> {{ payment.settlement_record.get_mode_display }}</div>
+                                    <div>Recognized subtotal ${{ payment.settlement_record.recognized_subtotal }} | Recognized tax ${{ payment.settlement_record.recognized_tax }}</div>
+                                    <div>Adjustment subtotal ${{ payment.settlement_record.adjustment_subtotal }} | Adjustment tax ${{ payment.settlement_record.adjustment_tax }}</div>
+                                    {% for allocation in payment.settlement_record.allocations.all %}
+                                        <div class="mono">Adjustment -> {{ allocation.invoice.display_invoice_number }} (${{ allocation.amount }})</div>
+                                    {% endfor %}
+                                </div>
+                            {% endif %}
                         </td>
                         <td>
                             <form method="post" action="{% url 'portal:payment_void' payment.pk %}" onsubmit="return confirm('Void this payment? This will recalculate the customer balance and invoice statuses.');" style="margin:0;">
@@ -228,6 +238,7 @@
 </div>
 {% endif %}
 {% endblock %}
+
 
 
 

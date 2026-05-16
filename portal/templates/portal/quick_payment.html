@@ -82,7 +82,7 @@
                 <a class="btn btn-secondary" href="{{ customer_statement_url }}">View Payment History</a>
             </div>
         {% else %}
-            <p class="page-sub">고객을 선택하면 현재 잔액과 최근 결제가 표시됩니다.</p>
+            <p class="page-sub">Select a customer to view the current balance and most recent payment.</p>
         {% endif %}
 
         {% if preview %}
@@ -98,6 +98,39 @@
                         <div class="stat-value" style="font-size:1.5rem;">${{ preview.unapplied_amount }}</div>
                     </div>
                 </div>
+                {% if settlement_preview %}
+                    <div class="message info" style="margin-top:14px;">
+                        This mode saves the actual check amount received and closes the remaining balance as a settlement adjustment.
+                    </div>
+                    <div class="grid cards-4" style="margin-top:14px;">
+                        <div class="card">
+                            <div class="stat-label">Actual Received</div>
+                            <div class="stat-value" style="font-size:1.35rem;">${{ settlement_preview.actual_received }}</div>
+                        </div>
+                        <div class="card">
+                            <div class="stat-label">Recognized Subtotal</div>
+                            <div class="stat-value" style="font-size:1.35rem;">${{ settlement_preview.recognized_subtotal }}</div>
+                        </div>
+                        <div class="card">
+                            <div class="stat-label">Recognized Tax</div>
+                            <div class="stat-value" style="font-size:1.35rem;">${{ settlement_preview.recognized_tax }}</div>
+                        </div>
+                        <div class="card">
+                            <div class="stat-label">Settlement Adjustment</div>
+                            <div class="stat-value" style="font-size:1.35rem;">${{ settlement_preview.shortfall }}</div>
+                        </div>
+                    </div>
+                    <div class="grid cards-3" style="margin-top:12px;">
+                        <div class="card">
+                            <div class="stat-label">Adjustment Subtotal</div>
+                            <div class="stat-value" style="font-size:1.2rem;">${{ settlement_preview.adjustment_subtotal }}</div>
+                        </div>
+                        <div class="card">
+                            <div class="stat-label">Adjustment Tax</div>
+                            <div class="stat-value" style="font-size:1.2rem;">${{ settlement_preview.adjustment_tax }}</div>
+                        </div>
+                    </div>
+                {% endif %}
                 <div class="table-wrap" style="margin-top:16px;">
                     <table>
                         <thead>
@@ -111,7 +144,7 @@
                         <tbody>
                         {% for row in preview.preview_rows %}
                             <tr>
-                                <td class="mono">{{ row.invoice.invoice_number }}</td>
+                                <td class="mono">{{ row.invoice.display_invoice_number }}</td>
                                 <td>{{ row.invoice.period_start|date:"m/d/Y" }} - {{ row.invoice.period_end|date:"m/d/Y" }}</td>
                                 <td>${{ row.amount_due }}</td>
                                 <td>${{ row.applied_amount }}</td>

@@ -215,6 +215,157 @@ class Payment(models.Model):
             invoice.refresh_statement(commit=True)
 
 
+class PaymentSettlement(models.Model):
+    MODE_TAX_INCLUSIVE = "tax_inclusive"
+    MODE_CASH_TAX_WAIVED = "cash_tax_waived"
+    MODE_CHOICES = (
+        (MODE_TAX_INCLUSIVE, "Tax-Inclusive Full Settlement"),
+        (MODE_CASH_TAX_WAIVED, "Cash / Tax Waived Settlement"),
+    )
+
+    payment = models.OneToOneField(Payment, on_delete=models.CASCADE, related_name="settlement")
+    customer = models.ForeignKey("customers.Customer", on_delete=models.CASCADE, related_name="payment_settlements")
+    mode = models.CharField(max_length=30, choices=MODE_CHOICES, default=MODE_TAX_INCLUSIVE)
+    actual_received = models.DecimalField(max_digits=10, decimal_places=2)
+    recognized_subtotal = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
+    recognized_tax = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
+    adjustment_subtotal = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
+    adjustment_tax = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
+    note = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self) -> str:
+        return f"Settlement for payment {self.payment_id}"
+
+    @property
+    def total_adjustment(self) -> Decimal:
+        return (Decimal(self.adjustment_subtotal) + Decimal(self.adjustment_tax)).quantize(Decimal("0.01"))
+
+    @staticmethod
+    def _split_tax_inclusive_amount(gross_amount: Decimal, tax_rate: Decimal):
+        gross_amount = Decimal(gross_amount).quantize(Decimal("0.01"))
+        tax_rate = Decimal(tax_rate or Decimal("0.00"))
+        if tax_rate <= Decimal("0.00"):
+            return gross_amount, Decimal("0.00")
+        divisor = Decimal("1.00") + (tax_rate / Decimal("100.00"))
+        recognized_subtotal = (gross_amount / divisor).quantize(Decimal("0.01"))
+        recognized_tax = (gross_amount - recognized_subtotal).quantize(Decimal("0.01"))
+        return recognized_subtotal, recognized_tax
+
+    @classmethod
+    def tax_inclusive_preview(cls, customer, payment_date, actual_received, exclude_payment_id=None):
+        base_preview = Payment.allocation_preview(customer, payment_date, Decimal("0.00"), exclude_payment_id=exclude_payment_id)
+        available_balance = Decimal(base_preview["available_balance"]).quantize(Decimal("0.01"))
+        actual_received = Decimal(actual_received).quantize(Decimal("0.01"))
+        if actual_received < Decimal("0.00"):
+            actual_received = Decimal("0.00")
+        if actual_received > available_balance:
+            actual_received = available_balance
+        shortfall = (available_balance - actual_received).quantize(Decimal("0.01"))
+        recognized_subtotal, recognized_tax = cls._split_tax_inclusive_amount(actual_received, customer.tax_rate)
+        adjustment_subtotal, adjustment_tax = cls._split_tax_inclusive_amount(shortfall, customer.tax_rate)
+        return {
+            "available_balance": available_balance,
+            "actual_received": actual_received,
+            "recognized_subtotal": recognized_subtotal,
+            "recognized_tax": recognized_tax,
+            "adjustment_subtotal": adjustment_subtotal,
+            "adjustment_tax": adjustment_tax,
+            "shortfall": shortfall,
+        }
+
+    @classmethod
+    def cash_tax_waived_preview(cls, customer, payment_date, actual_received, exclude_payment_id=None):
+        base_preview = Payment.allocation_preview(customer, payment_date, Decimal("0.00"), exclude_payment_id=exclude_payment_id)
+        available_balance = Decimal(base_preview["available_balance"]).quantize(Decimal("0.01"))
+        actual_received = Decimal(actual_received).quantize(Decimal("0.01"))
+        if actual_received < Decimal("0.00"):
+            actual_received = Decimal("0.00")
+        if actual_received > available_balance:
+            actual_received = available_balance
+        shortfall = (available_balance - actual_received).quantize(Decimal("0.01"))
+        return {
+            "available_balance": available_balance,
+            "actual_received": actual_received,
+            "recognized_subtotal": actual_received,
+            "recognized_tax": Decimal("0.00"),
+            "adjustment_subtotal": Decimal("0.00"),
+            "adjustment_tax": shortfall,
+            "shortfall": shortfall,
+        }
+
+    @classmethod
+    def _create_settlement_allocations(cls, settlement, payment, shortfall):
+        if shortfall <= Decimal("0.00"):
+            return settlement
+        residual_preview = Payment.allocation_preview(
+            payment.customer,
+            payment.payment_date,
+            Decimal("0.00"),
+            exclude_payment_id=payment.pk,
+        )
+        for row in residual_preview["preview_rows"]:
+            amount_due = Decimal(row["amount_due"]).quantize(Decimal("0.01"))
+            if amount_due <= Decimal("0.00"):
+                continue
+            PaymentSettlementAllocation.objects.create(
+                settlement=settlement,
+                invoice=row["invoice"],
+                amount=amount_due,
+            )
+        return settlement
+
+    @classmethod
+    def create_tax_inclusive_full_settlement(cls, payment, note=""):
+        settlement_preview = cls.tax_inclusive_preview(
+            payment.customer,
+            payment.payment_date,
+            payment.amount,
+            exclude_payment_id=payment.pk,
+        )
+        shortfall = settlement_preview["shortfall"]
+        settlement = cls.objects.create(
+            payment=payment,
+            customer=payment.customer,
+            mode=cls.MODE_TAX_INCLUSIVE,
+            actual_received=Decimal(payment.amount).quantize(Decimal("0.01")),
+            recognized_subtotal=settlement_preview["recognized_subtotal"],
+            recognized_tax=settlement_preview["recognized_tax"],
+            adjustment_subtotal=settlement_preview["adjustment_subtotal"],
+            adjustment_tax=settlement_preview["adjustment_tax"],
+            note=note,
+        )
+        cls._create_settlement_allocations(settlement, payment, shortfall)
+        Payment.refresh_customer_invoices(payment.customer)
+        return settlement
+
+    @classmethod
+    def create_cash_tax_waived_settlement(cls, payment, note=""):
+        settlement_preview = cls.cash_tax_waived_preview(
+            payment.customer,
+            payment.payment_date,
+            payment.amount,
+            exclude_payment_id=payment.pk,
+        )
+        shortfall = settlement_preview["shortfall"]
+        settlement = cls.objects.create(
+            payment=payment,
+            customer=payment.customer,
+            mode=cls.MODE_CASH_TAX_WAIVED,
+            actual_received=Decimal(payment.amount).quantize(Decimal("0.01")),
+            recognized_subtotal=settlement_preview["recognized_subtotal"],
+            recognized_tax=settlement_preview["recognized_tax"],
+            adjustment_subtotal=settlement_preview["adjustment_subtotal"],
+            adjustment_tax=settlement_preview["adjustment_tax"],
+            note=note,
+        )
+        cls._create_settlement_allocations(settlement, payment, shortfall)
+        Payment.refresh_customer_invoices(payment.customer)
+        return settlement
+
 class PaymentAllocation(models.Model):
     payment = models.ForeignKey(Payment, on_delete=models.CASCADE, related_name="allocations")
     invoice = models.ForeignKey("billing.Invoice", on_delete=models.CASCADE, related_name="allocations")
@@ -236,3 +387,29 @@ class PaymentAllocation(models.Model):
     def clean(self):
         if self.amount <= Decimal("0.00"):
             raise ValidationError("Allocated amount must be greater than zero.")
+
+
+class PaymentSettlementAllocation(models.Model):
+    settlement = models.ForeignKey(PaymentSettlement, on_delete=models.CASCADE, related_name="allocations")
+    invoice = models.ForeignKey("billing.Invoice", on_delete=models.CASCADE, related_name="settlement_allocations")
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["invoice__period_start", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["settlement", "invoice"],
+                name="unique_invoice_settlement_allocation_per_payment",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"Settlement {self.settlement_id} -> {self.invoice.invoice_number}: {self.amount}"
+
+    def clean(self):
+        if self.amount <= Decimal("0.00"):
+            raise ValidationError("Settlement amount must be greater than zero.")
+
+
+

@@ -1,0 +1,96 @@
+{% extends "portal/base.html" %}
+{% load humanize %}
+{% block content %}
+<div class="card">
+    <form method="get" class="form-grid">
+        <div><label>Date from</label><input type="date" name="date_from" value="{{ date_from|date:'Y-m-d' }}"></div>
+        <div><label>Date to</label><input type="date" name="date_to" value="{{ date_to|date:'Y-m-d' }}"></div>
+        <div class="full" style="display:flex; align-items:center; gap:10px;">
+            <input id="exclude_cash" type="checkbox" name="exclude_cash" value="1" {% if exclude_cash %}checked{% endif %} style="width:auto; padding:0; margin:0;">
+            <label for="exclude_cash" style="margin:0;">Exclude cash payments</label>
+        </div>
+        <div class="full btn-row">
+            <button class="btn-primary" type="submit">Run Report</button>
+            <button class="btn-secondary" type="submit" name="export" value="csv">Export CSV</button>
+        </div>
+    </form>
+</div>
+
+<div class="grid cards-4" style="margin-top:18px;">
+    <div class="card">
+        <div class="stat-label">Period</div>
+        <div class="stat-value">{{ date_from|date:"m/d/Y" }} - {{ date_to|date:"m/d/Y" }}</div>
+    </div>
+    <div class="card">
+        <div class="stat-label">Service Total</div>
+        <div class="stat-value">${{ totals.subtotal|floatformat:2|intcomma }}</div>
+    </div>
+    <div class="card">
+        <div class="stat-label">Tax Total</div>
+        <div class="stat-value">${{ totals.tax|floatformat:2|intcomma }}</div>
+    </div>
+    <div class="card">
+        <div class="stat-label">Gross Total</div>
+        <div class="stat-value">${{ totals.gross|floatformat:2|intcomma }}</div>
+    </div>
+</div>
+
+<div class="grid cards-3" style="margin-top:18px;">
+    {% for group in bucket_groups %}
+        <div class="card">
+            <div class="stat-label">{{ group.label }}</div>
+            <div style="display:grid; gap:8px;">
+                <div><strong>Service:</strong> ${{ group.subtotal|floatformat:2|intcomma }}</div>
+                <div><strong>Tax:</strong> ${{ group.tax|floatformat:2|intcomma }}</div>
+                <div><strong>Total:</strong> ${{ group.gross|floatformat:2|intcomma }}</div>
+                <div><strong>Payments:</strong> {{ group.count }}</div>
+            </div>
+        </div>
+    {% endfor %}
+</div>
+
+{% for group in bucket_groups %}
+<div class="card" style="margin-top:18px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
+        <h3 style="margin:0;">{{ group.label }}</h3>
+        <div class="btn-row" style="margin:0; gap:10px;">
+            <span class="btn btn-secondary" style="cursor:default;">Service ${{ group.subtotal|floatformat:2|intcomma }}</span>
+            <span class="btn btn-secondary" style="cursor:default;">Tax ${{ group.tax|floatformat:2|intcomma }}</span>
+            <span class="btn btn-secondary" style="cursor:default;">Total ${{ group.gross|floatformat:2|intcomma }}</span>
+        </div>
+    </div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Customer</th>
+                    <th>State</th>
+                    <th>Method</th>
+                    <th>Service</th>
+                    <th>Tax</th>
+                    <th>Gross</th>
+                    <th>Reference</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for row in group.rows %}
+                <tr>
+                    <td>{{ row.payment.payment_date|date:"m/d/Y" }}</td>
+                    <td>{{ row.payment.customer.name }}</td>
+                    <td>{{ row.state }}</td>
+                    <td>{{ row.payment.get_method_display }}</td>
+                    <td>${{ row.subtotal|floatformat:2|intcomma }}</td>
+                    <td>${{ row.tax|floatformat:2|intcomma }}</td>
+                    <td>${{ row.gross|floatformat:2|intcomma }}</td>
+                    <td>{{ row.payment.reference_number|default:"-" }}</td>
+                </tr>
+            {% empty %}
+                <tr><td colspan="8">No payments in this bucket for the selected period.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endfor %}
+{% endblock %}

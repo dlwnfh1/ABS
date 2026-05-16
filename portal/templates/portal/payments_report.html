@@ -5,18 +5,55 @@
     <form method="get" class="form-grid">
         <div><label>Date from</label><input type="date" name="date_from" value="{{ date_from|date:'Y-m-d' }}"></div>
         <div><label>Date to</label><input type="date" name="date_to" value="{{ date_to|date:'Y-m-d' }}"></div>
-        <div class="full btn-row"><button class="btn-primary" type="submit">Run Report</button></div>
+        <div class="full btn-row">
+    <button class="btn-primary" type="submit">Run Report</button>
+    <button class="btn-secondary" type="submit" name="export" value="csv">Export CSV</button>
+</div>
     </form>
 </div>
 
-<div class="grid cards-3" style="margin-top:18px;">
-    <div class="card"><div class="stat-label">Total Payments</div><div class="stat-value">${{ total_amount|floatformat:2|intcomma }}</div></div>
+<div class="grid cards-4" style="margin-top:18px;">
+    <div class="card">
+        <div class="stat-label">Period</div>
+        <div class="stat-value">{{ date_from|date:"m/d/Y" }} - {{ date_to|date:"m/d/Y" }}</div>
+    </div>
+    <div class="card">
+        <div class="stat-label">Total Received</div>
+        <div class="stat-value">${{ total_amount|floatformat:2|intcomma }}</div>
+    </div>
+    <div class="card">
+        <div class="stat-label">Payment Count</div>
+        <div class="stat-value">{{ total_count }}</div>
+    </div>
+    <div class="card">
+        <div class="stat-label">Methods Used</div>
+        <div class="stat-value">{{ method_groups|length }}</div>
+    </div>
+</div>
+
+<div class="grid cards-4" style="margin-top:18px;">
     {% for method, amount in method_totals.items %}
-        <div class="card"><div class="stat-label">{{ method }}</div><div class="stat-value">${{ amount|floatformat:2|intcomma }}</div></div>
+        <div class="card">
+            <div class="stat-label">{{ method }}</div>
+            <div class="stat-value">${{ amount|floatformat:2|intcomma }}</div>
+        </div>
+    {% empty %}
+        <div class="card">
+            <div class="stat-label">Payments</div>
+            <div class="stat-value">No data</div>
+        </div>
     {% endfor %}
 </div>
 
+{% for group in method_groups %}
 <div class="card" style="margin-top:18px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px;">
+        <h3 style="margin:0;">{{ group.label }}</h3>
+        <div class="btn-row" style="margin:0; gap:10px;">
+            <span class="btn btn-secondary" style="cursor:default;">{{ group.count }} payment{{ group.count|pluralize }}</span>
+            <span class="btn btn-secondary" style="cursor:default;">${{ group.total_amount|floatformat:2|intcomma }}</span>
+        </div>
+    </div>
     <div class="table-wrap">
         <table>
             <thead>
@@ -24,48 +61,30 @@
                     <th>Date</th>
                     <th>Customer</th>
                     <th>Amount</th>
-                    <th>Method</th>
                     <th>Reference</th>
                     <th>Note</th>
                 </tr>
             </thead>
             <tbody>
-            {% for payment in payments %}
+            {% for payment in group.payments %}
                 <tr>
                     <td>{{ payment.payment_date|date:"m/d/Y" }}</td>
                     <td>{{ payment.customer.name }}</td>
                     <td>${{ payment.amount|floatformat:2|intcomma }}</td>
-                    <td>{{ payment.get_method_display }}</td>
                     <td>{{ payment.reference_number|default:"-" }}</td>
                     <td>{{ payment.note|default:"-" }}</td>
                 </tr>
             {% empty %}
-                <tr><td colspan="6">No payments in this date range.</td></tr>
+                <tr><td colspan="5">No payments for this method in the selected period.</td></tr>
             {% endfor %}
             </tbody>
         </table>
     </div>
-    {% if page_obj and page_obj.paginator.num_pages > 1 %}
-    <div class="pagination">
-        <div class="page-info">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</div>
-        <div class="page-links">
-            {% if page_obj.has_previous %}
-                <a class="btn btn-secondary" href="?{% if page_query %}{{ page_query }}&{% endif %}page={{ page_obj.previous_page_number }}">Previous</a>
-            {% endif %}
-            {% for num in page_numbers %}
-                {% if num == page_obj.paginator.ELLIPSIS %}
-                    <span class="page-ellipsis">…</span>
-                {% elif page_obj.number == num %}
-                    <span class="page-link active">{{ num }}</span>
-                {% else %}
-                    <a class="page-link" href="?{% if page_query %}{{ page_query }}&{% endif %}page={{ num }}">{{ num }}</a>
-                {% endif %}
-            {% endfor %}
-            {% if page_obj.has_next %}
-                <a class="btn btn-secondary" href="?{% if page_query %}{{ page_query }}&{% endif %}page={{ page_obj.next_page_number }}">Next</a>
-            {% endif %}
-        </div>
-    </div>
-    {% endif %}
 </div>
+{% empty %}
+<div class="card" style="margin-top:18px;">
+    <p class="page-sub" style="margin:0;">No payments in this date range.</p>
+</div>
+{% endfor %}
 {% endblock %}
+

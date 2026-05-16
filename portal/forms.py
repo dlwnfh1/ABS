@@ -3,7 +3,7 @@ from django.core.validators import validate_email
 from django.utils import timezone
 
 from customers.models import Customer, Service, PHONE_NUMBER_VALIDATOR
-from payments.models import Payment
+from payments.models import Payment, PaymentSettlement
 
 
 class PortalQuickPaymentForm(forms.Form):
@@ -17,12 +17,25 @@ class PortalQuickPaymentForm(forms.Form):
     )
     amount = forms.DecimalField(max_digits=10, decimal_places=2, min_value=0.01)
     method = forms.ChoiceField(choices=Payment.METHOD_CHOICES, initial=Payment.METHOD_CHECK)
+    settlement_mode = forms.ChoiceField(
+        choices=(("normal", "Normal Payment"), (PaymentSettlement.MODE_TAX_INCLUSIVE, "Check / Tax-Inclusive Settlement"), (PaymentSettlement.MODE_CASH_TAX_WAIVED, "Cash / Tax Waived Settlement")),
+        initial="normal",
+        required=False,
+    )
     reference_number = forms.CharField(max_length=100, required=False)
     note = forms.CharField(required=False, widget=forms.Textarea(attrs={"rows": 3}))
     attachment_file = forms.FileField(
         required=False,
         help_text="Optional. If you preview first, choose the file again before saving.",
     )
+
+    def clean(self):
+        cleaned_data = super().clean()
+        settlement_mode = cleaned_data.get("settlement_mode")
+        method = cleaned_data.get("method")
+        if settlement_mode == PaymentSettlement.MODE_TAX_INCLUSIVE and method != Payment.METHOD_CHECK:
+            self.add_error("method", "Tax-inclusive settlement is only available for check payments.")
+        return cleaned_data
 
 
 class BasePortalCustomerForm(forms.Form):
@@ -117,3 +130,8 @@ class PortalCustomerEditForm(BasePortalCustomerForm):
         if queryset.exists():
             raise forms.ValidationError("This account number already exists.")
         return account_number
+
+
+
+
+
