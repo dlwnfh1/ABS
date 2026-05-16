@@ -137,32 +137,12 @@ class Customer(models.Model):
 
     def open_balance_as_of(self, as_of_date=None) -> Decimal:
         as_of_date = as_of_date or timezone.localdate()
-        latest_issued_invoice = next(
-            (
-                invoice
-                for invoice in self._nonvoid_invoices_cache()
-                if invoice.issue_date and invoice.issue_date <= as_of_date
-            ),
-            None,
-        )
-        if not latest_issued_invoice:
-            return Decimal("0.00")
-
-        gross_total = (Decimal(latest_issued_invoice.subtotal) + Decimal(latest_issued_invoice.tax_amount)).quantize(
-            Decimal("0.01")
-        )
-        payments_after_issue = sum(
-            (
-                Decimal(payment.amount)
-                for payment in self._active_payments_cache()
-                if latest_issued_invoice.issue_date < payment.payment_date <= as_of_date
-            ),
-            Decimal("0.00"),
-        )
-        balance = Decimal(gross_total) - Decimal(payments_after_issue)
-        if balance < Decimal("0.00"):
-            balance = Decimal("0.00")
-        return balance.quantize(Decimal("0.01"))
+        balance = Decimal("0.00")
+        for invoice in self._nonvoid_invoices_cache():
+            if invoice.issue_date and invoice.issue_date > as_of_date:
+                continue
+            balance += invoice.amount_due_for_allocation(as_of_date=as_of_date)
+        return max(balance, Decimal("0.00")).quantize(Decimal("0.01"))
 
     def next_expected_issue_date(self):
         latest_invoice = next(iter(self._nonvoid_invoices_cache()), None)
