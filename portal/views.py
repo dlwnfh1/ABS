@@ -1387,7 +1387,8 @@ def accountant_tax_report_view(request):
     today = timezone.localdate()
     date_from = _parse_iso_date(request.GET.get("date_from"), today.replace(day=1))
     date_to = _parse_iso_date(request.GET.get("date_to"), today)
-    exclude_cash = (request.GET.get("exclude_cash") or "").lower() in {"1", "true", "on", "yes"}
+    exclude_cash_param = request.GET.get("exclude_cash")
+    exclude_cash = True if exclude_cash_param is None else (exclude_cash_param or "").lower() in {"1", "true", "on", "yes"}
     report = _build_accountant_report_data(date_from, date_to, exclude_cash=exclude_cash)
 
     if (request.GET.get("export") or "").lower() == "csv":
