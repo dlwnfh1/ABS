@@ -149,9 +149,7 @@ class CustomerAdmin(admin.ModelAdmin):
         "force_generate_all_due_action",
     ]
 
-    def _ensure_candidate_map(self):
-        if hasattr(self, "_candidate_map"):
-            return
+    def _candidate_base_queryset(self, active_filter="all", term_filter="all"):
         queryset = self.model.objects.annotate(
             invoice_total=Count("invoices", distinct=True),
             payment_total=Count("payments", distinct=True),
@@ -163,10 +161,26 @@ class CustomerAdmin(admin.ModelAdmin):
                 to_attr="prefetched_invoices",
             )
         )
+        if active_filter == "active":
+            queryset = queryset.filter(is_active=True)
+        elif active_filter == "inactive":
+            queryset = queryset.filter(is_active=False)
+        if term_filter in {"3", "6", "9", "12"}:
+            queryset = queryset.filter(billing_term=int(term_filter))
+        return queryset
+
+    def _ensure_candidate_map(self, params=None):
+        active_filter = (params or {}).get("active_state", "active")
+        term_filter = (params or {}).get("term", "all")
+        cache_key = (active_filter, term_filter)
+        if getattr(self, "_candidate_map_key", None) == cache_key and hasattr(self, "_candidate_map"):
+            return
+        queryset = self._candidate_base_queryset(active_filter=active_filter, term_filter=term_filter)
         self._candidate_map = {
             customer.pk: {**self._build_customer_workflow(customer), "_customer": customer}
             for customer in queryset
         }
+        self._candidate_map_key = cache_key
 
     def get_urls(self):
         urls = super().get_urls()
@@ -265,33 +279,11 @@ class CustomerAdmin(admin.ModelAdmin):
 
     def get_queryset(self, request):
         filter_params = getattr(request, "_custom_filter_params", request.GET)
-        queryset = super().get_queryset(request)
-        queryset = queryset.annotate(
-            invoice_total=Count("invoices", distinct=True),
-            payment_total=Count("payments", distinct=True),
-            last_payment_date=Max("payments__payment_date", filter=Q(payments__is_voided=False)),
-        ).prefetch_related(
-            Prefetch(
-                "invoices",
-                queryset=Invoice.objects.exclude(status=Invoice.STATUS_VOID).order_by("-period_start", "-id"),
-                to_attr="prefetched_invoices",
-            )
-        )
-        self._candidate_map = {
-            customer.pk: {**self._build_customer_workflow(customer), "_customer": customer}
-            for customer in queryset
-        }
         status_filter = filter_params.get("workflow_status", "all")
         active_filter = filter_params.get("active_state", "active")
         term_filter = filter_params.get("term", "all")
-
-        if active_filter == "active":
-            queryset = queryset.filter(is_active=True)
-        elif active_filter == "inactive":
-            queryset = queryset.filter(is_active=False)
-
-        if term_filter in {"3", "6", "9", "12"}:
-            queryset = queryset.filter(billing_term=int(term_filter))
+        self._ensure_candidate_map(filter_params)
+        queryset = self._candidate_base_queryset(active_filter=active_filter, term_filter=term_filter)
 
         if status_filter != "all":
             customer_ids = [
@@ -311,7 +303,7 @@ class CustomerAdmin(admin.ModelAdmin):
             filtered_get.pop(key, None)
         request.GET = filtered_get
         request.META["QUERY_STRING"] = filtered_get.urlencode()
-        self._ensure_candidate_map()
+        self._ensure_candidate_map(original_get)
         extra_context = extra_context or {}
         extra_context["workflow_filters"] = self._build_workflow_filters(original_get)
         extra_context["active_filters"] = self._build_active_filters(original_get)
@@ -869,7 +861,7 @@ class CustomerAdmin(admin.ModelAdmin):
         return f"?{query_string}" if query_string else "?"
 
     def _candidate_items_for_filters(self, params):
-        self._ensure_candidate_map()
+        self._ensure_candidate_map(params)
         active_filter = params.get("active_state", "active")
         term_filter = params.get("term", "all")
         items = []

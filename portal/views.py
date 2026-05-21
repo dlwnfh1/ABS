@@ -82,15 +82,53 @@ def _portal_customer_queryset():
     )
 
 
+def _portal_auto_ach_review_customers(as_of_date):
+    auto_ach_invoice_qs = (
+        Invoice.objects.exclude(status=Invoice.STATUS_VOID)
+        .only("id", "customer_id", "period_start", "period_end", "issue_date", "due_date", "tax_rate", "status")
+        .prefetch_related(
+            Prefetch(
+                "allocations",
+                queryset=PaymentAllocation.objects.select_related("payment")
+                .filter(payment__is_voided=False)
+                .only("id", "payment_id", "invoice_id", "amount", "payment__payment_date")
+                .order_by("payment__payment_date", "id"),
+                to_attr="_prefetched_valid_allocations",
+            )
+        )
+        .order_by("-period_start", "-id")
+    )
+    auto_ach_billable_services_qs = (
+        Service.objects.filter(is_active=True, billing_status=Service.BILLING_STATUS_BILLABLE)
+        .only("id", "customer_id", "billing_amount", "billing_status")
+        .order_by("id")
+    )
+    return [
+        customer
+        for customer in Customer.objects.filter(is_active=True, auto_ach=True)
+        .only("id", "name", "account_number", "is_active", "auto_ach", "first_billing_date", "billing_term")
+        .prefetch_related(
+            Prefetch(
+                "services",
+                queryset=auto_ach_billable_services_qs,
+                to_attr="_prefetched_billable_services",
+            ),
+            Prefetch(
+                "invoices",
+                queryset=auto_ach_invoice_qs,
+                to_attr="_prefetched_nonvoid_invoices",
+            ),
+        )
+        .order_by("name", "account_number")
+        if customer.auto_ach_review_needed(as_of_date)
+    ]
+
+
 def _portal_context(request, **extra):
     today = timezone.localdate()
     unprinted_batch_count = InvoiceGenerationBatch.objects.filter(is_printed=False).count()
     unprinted_invoice_count = SavedInvoicePDF.objects.filter(batch__is_printed=False, marker="CURRENT").count()
-    auto_ach_review_customers = [
-        customer
-        for customer in _portal_customer_queryset().filter(is_active=True, auto_ach=True).order_by("name", "account_number")
-        if customer.auto_ach_review_needed(today)
-    ]
+    auto_ach_review_customers = _portal_auto_ach_review_customers(today)
     auto_ach_review_count = len(auto_ach_review_customers)
     auto_ach_review_summary = _format_auto_ach_review_summary(auto_ach_review_customers)
     return {
