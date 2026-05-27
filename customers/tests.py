@@ -1,10 +1,13 @@
 from io import BytesIO
 from decimal import Decimal
+from datetime import timedelta
 
 from django.contrib.admin.sites import AdminSite
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import RequestFactory, TestCase
+from django.utils import timezone
 
+from billing.models import Invoice
 from .admin import CustomerAdmin
 from .models import Customer, Service
 
@@ -84,3 +87,36 @@ class CustomerCsvAdminTests(TestCase):
 
         service = Service.objects.get(customer__account_number="C300", service_name="Monitoring Service")
         self.assertIsNone(service.activation_date)
+
+    def test_candidate_map_refreshes_after_invoice_generation(self):
+        today = timezone.localdate()
+        customer = Customer.objects.create(
+            name="Ready Co",
+            account_number="R100",
+            billing_address1="1 Ready St",
+            billing_term=3,
+            first_billing_date=today - timedelta(days=75),
+        )
+        Service.objects.create(
+            customer=customer,
+            service_name="Monitoring Service",
+            service_address1="1 Ready St",
+            billing_amount="100.00",
+        )
+        latest_invoice = Invoice.objects.create(
+            customer=customer,
+            period_start=today - timedelta(days=75),
+            period_end=today + timedelta(days=14),
+            issue_date=today - timedelta(days=90),
+            due_date=today - timedelta(days=75),
+            status=Invoice.STATUS_ISSUED,
+        )
+        params = {"active_state": "active", "term": "all"}
+
+        self.admin._ensure_candidate_map(params)
+        self.assertEqual(self.admin._candidate_map[customer.pk]["status"], "ready")
+
+        latest_invoice.generate_next_invoice()
+        self.admin._ensure_candidate_map(params)
+
+        self.assertEqual(self.admin._candidate_map[customer.pk]["status"], "already_issued")

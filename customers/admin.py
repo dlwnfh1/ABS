@@ -172,15 +172,11 @@ class CustomerAdmin(admin.ModelAdmin):
     def _ensure_candidate_map(self, params=None):
         active_filter = (params or {}).get("active_state", "active")
         term_filter = (params or {}).get("term", "all")
-        cache_key = (active_filter, term_filter)
-        if getattr(self, "_candidate_map_key", None) == cache_key and hasattr(self, "_candidate_map"):
-            return
         queryset = self._candidate_base_queryset(active_filter=active_filter, term_filter=term_filter)
         self._candidate_map = {
             customer.pk: {**self._build_customer_workflow(customer), "_customer": customer}
             for customer in queryset
         }
-        self._candidate_map_key = cache_key
 
     def get_urls(self):
         urls = super().get_urls()
