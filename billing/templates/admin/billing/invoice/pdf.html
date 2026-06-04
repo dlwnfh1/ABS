@@ -392,9 +392,9 @@
                 <div class="summary-panel">
                     <table class="totals-table">
                         {% if invoice.partial_payment > 0 %}<tr><td>Partial Payment</td><td class="num">-${{ invoice.partial_payment|floatformat:2 }}</td></tr>{% endif %}
-                        <tr><td>Subtotal</td><td class="num">${% if is_special_invoice_format %}{{ special_subtotal|floatformat:2 }}{% else %}{{ invoice.subtotal|floatformat:2 }}{% endif %}</td></tr>
+                        <tr><td>Subtotal</td><td class="num">${% if is_special_invoice_format %}{{ special_subtotal|floatformat:2 }}{% else %}{{ display_subtotal|floatformat:2 }}{% endif %}</td></tr>
                         {% if not is_special_invoice_format %}<tr><td>Tax Rate</td><td class="num">{{ invoice.tax_rate }}%</td></tr>{% endif %}
-                        <tr><td>{% if is_special_invoice_format %}Total tax &amp; fees{% else %}Tax Amount{% endif %}</td><td class="num">${% if is_special_invoice_format %}{{ special_tax_fees_total|floatformat:2 }}{% else %}{{ invoice.tax_amount|floatformat:2 }}{% endif %}</td></tr>
+                        <tr><td>{% if is_special_invoice_format %}Total tax &amp; fees{% else %}Tax Amount{% endif %}</td><td class="num">${% if is_special_invoice_format %}{{ special_tax_fees_total|floatformat:2 }}{% else %}{{ display_tax_amount|floatformat:2 }}{% endif %}</td></tr>
                         <tr><td>Original Invoice Total</td><td class="num">${% if is_special_invoice_format %}{{ special_original_total|floatformat:2 }}{% else %}{{ invoice.total_due|floatformat:2 }}{% endif %}</td></tr>
                         <tr class="grand"><td>{% if is_latest_issued_invoice %}Current Open Balance{% else %}Open Amount{% endif %}</td><td class="num">${{ current_balance_due|floatformat:2 }}</td></tr>
                     </table>

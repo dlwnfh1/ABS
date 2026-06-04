@@ -330,5 +330,52 @@ class BillingWorkflowTests(TestCase):
         self.assertEqual(context["special_original_total"], Decimal("530.37"))
         self.assertEqual(context["current_balance_due"], Decimal("530.37"))
 
+    def test_latest_invoice_pdf_context_shows_only_current_open_terms(self):
+        customer = Customer.objects.create(
+            name="H Mart Sample",
+            account_number="0234632",
+            billing_address1="1720 Route 70E",
+            tax_rate=Decimal("6.625"),
+            billing_term=3,
+            first_billing_date=date(2025, 10, 1),
+            email_address="856-489-4611",
+        )
+        Service.objects.create(
+            customer=customer,
+            service_name="Monitoring Service",
+            service_address1="1720 Route 70E",
+            activation_date=date(2025, 10, 1),
+            billing_amount=Decimal("270.00"),
+        )
+        first_invoice = Invoice.objects.get(customer=customer, auto_generated=False)
+        second_invoice = first_invoice.generate_next_invoice()
+        third_invoice = second_invoice.generate_next_invoice()
+
+        Payment.objects.create(
+            customer=customer,
+            amount=Decimal("287.89"),
+            payment_date=date(2026, 5, 13),
+            method=Payment.METHOD_CHECK,
+            reference_number="1074909",
+        )
+
+        context = build_invoice_pdf_context(third_invoice)
+        visible_periods = [
+            (item["period_start"], item["period_end"])
+            for item in context["display_items"]
+            if item["period_start"]
+        ]
+
+        self.assertEqual(
+            visible_periods,
+            [
+                (third_invoice.period_start, third_invoice.period_end),
+                (second_invoice.period_start, second_invoice.period_end),
+            ],
+        )
+        self.assertEqual(context["display_subtotal"], Decimal("540.00"))
+        self.assertEqual(context["display_tax_amount"], Decimal("35.78"))
+        self.assertEqual(context["current_balance_due"], Decimal("575.78"))
+
 # Create your tests here.
 

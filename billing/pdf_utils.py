@@ -71,6 +71,59 @@ def portal_logo_data_uri():
     return logo_symbol_data_uri()
 
 
+def _filter_current_open_source_items(invoice, source_items, today, is_latest_issued_invoice):
+    if not is_latest_issued_invoice:
+        return source_items
+
+    period_keys = {
+        (item.period_start, item.period_end)
+        for item in source_items
+        if item.period_start and item.period_end
+    }
+    if not period_keys:
+        return source_items
+
+    open_period_keys = set()
+    related_invoices = (
+        invoice.customer.invoices.exclude(status=Invoice.STATUS_VOID)
+        .filter(period_start__in=[period_start for period_start, _period_end in period_keys])
+        .order_by("period_start", "id")
+    )
+    for related_invoice in related_invoices:
+        key = (related_invoice.period_start, related_invoice.period_end)
+        if key in period_keys and related_invoice.amount_due_for_allocation(today) > Decimal("0.00"):
+            open_period_keys.add(key)
+
+    return [
+        item
+        for item in source_items
+        if (item.period_start, item.period_end) in open_period_keys
+    ]
+
+
+def _display_totals_for_source_items(invoice, display_source_items):
+    period_keys = {
+        (item.period_start, item.period_end)
+        for item in display_source_items
+        if item.period_start and item.period_end
+    }
+    related_invoices = (
+        invoice.customer.invoices.exclude(status=Invoice.STATUS_VOID)
+        .filter(period_start__in=[period_start for period_start, _period_end in period_keys])
+        .order_by("period_start", "id")
+    )
+    tax_amount = sum(
+        (
+            related_invoice.current_period_tax
+            for related_invoice in related_invoices
+            if (related_invoice.period_start, related_invoice.period_end) in period_keys
+        ),
+        Decimal("0.00"),
+    )
+    subtotal = sum((Decimal(item.amount) for item in display_source_items), Decimal("0.00"))
+    return subtotal.quantize(Decimal("0.01")), tax_amount.quantize(Decimal("0.01"))
+
+
 def build_special_invoice_display_items(invoice, source_items):
     billable_services = sorted(
         list(invoice.customer.billable_services.order_by("id")[:3]),
@@ -160,8 +213,19 @@ def build_invoice_pdf_context(invoice):
         .first()
     )
     source_items = list(invoice.items.order_by("period_start", "id"))
+    is_latest_issued_invoice = bool(latest_issued_invoice and latest_issued_invoice.pk == invoice.pk)
     items = list(reversed(source_items))
     is_special_invoice_format = invoice.customer.account_number in SPECIAL_FORMAT_ACCOUNT_NUMBERS
+    display_source_items = (
+        source_items
+        if is_special_invoice_format
+        else _filter_current_open_source_items(
+            invoice,
+            source_items,
+            today,
+            is_latest_issued_invoice,
+        )
+    )
     padded_items = [
         {
             "description": item.description,
@@ -170,7 +234,7 @@ def build_invoice_pdf_context(invoice):
             "amount": item.amount,
             "line_type": item.line_type,
         }
-        for item in items
+        for item in reversed(display_source_items)
     ]
     if len(padded_items) > 5:
         overflow_items = padded_items[4:]
@@ -199,11 +263,15 @@ def build_invoice_pdf_context(invoice):
     special_subtotal = Decimal(invoice.subtotal)
     special_tax_fees_total = Decimal(invoice.tax_amount)
     if is_special_invoice_format:
-        display_items, special_subtotal, special_tax_fees_total = build_special_invoice_display_items(invoice, source_items)
+        display_items, special_subtotal, special_tax_fees_total = build_special_invoice_display_items(invoice, display_source_items)
     special_original_total = (special_subtotal + special_tax_fees_total).quantize(Decimal("0.01"))
+    display_subtotal = Decimal(invoice.subtotal)
+    display_tax_amount = Decimal(invoice.tax_amount)
+    if not is_special_invoice_format and len(display_source_items) < len(source_items):
+        display_subtotal, display_tax_amount = _display_totals_for_source_items(invoice, display_source_items)
     current_balance_due = (
         invoice.customer.open_balance_as_of(today)
-        if latest_issued_invoice and latest_issued_invoice.pk == invoice.pk
+        if is_latest_issued_invoice
         else invoice.amount_due_for_allocation(today)
     )
     if is_special_invoice_format:
@@ -211,7 +279,7 @@ def build_invoice_pdf_context(invoice):
             invoice,
             special_original_total,
             today,
-            bool(latest_issued_invoice and latest_issued_invoice.pk == invoice.pk),
+            is_latest_issued_invoice,
         )
 
     billing_to = invoice.customer.billing_address1
@@ -232,7 +300,7 @@ def build_invoice_pdf_context(invoice):
         "padded_items": padded_items,
         "current_balance_due": current_balance_due,
         "preview_date": today,
-        "is_latest_issued_invoice": bool(latest_issued_invoice and latest_issued_invoice.pk == invoice.pk),
+        "is_latest_issued_invoice": is_latest_issued_invoice,
         "logo_symbol_data_uri": logo_symbol_data_uri(),
         "billing_to_display": billing_to,
         "service_at_display": service_at,
@@ -241,6 +309,8 @@ def build_invoice_pdf_context(invoice):
         "special_subtotal": special_subtotal,
         "special_tax_fees_total": special_tax_fees_total,
         "special_original_total": special_original_total,
+        "display_subtotal": display_subtotal,
+        "display_tax_amount": display_tax_amount,
     }
 
 

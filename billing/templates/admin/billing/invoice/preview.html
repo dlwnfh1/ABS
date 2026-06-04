@@ -194,9 +194,9 @@
                 </div>
                 <div class="invoice-totals">
                     {% if invoice.partial_payment > 0 %}<div class="invoice-total-row"><span class="label">Partial Payment</span><span class="amount">-${{ invoice.partial_payment|floatformat:2 }}</span></div>{% endif %}
-                    <div class="invoice-total-row"><span class="label">Subtotal</span><span class="amount">${% if is_special_invoice_format %}{{ special_subtotal|floatformat:2 }}{% else %}{{ invoice.subtotal|floatformat:2 }}{% endif %}</span></div>
+                    <div class="invoice-total-row"><span class="label">Subtotal</span><span class="amount">${% if is_special_invoice_format %}{{ special_subtotal|floatformat:2 }}{% else %}{{ display_subtotal|floatformat:2 }}{% endif %}</span></div>
                     {% if not is_special_invoice_format %}<div class="invoice-total-row"><span class="label">Tax Rate</span><span class="amount">{{ invoice.tax_rate }}%</span></div>{% endif %}
-                    <div class="invoice-total-row"><span class="label">{% if is_special_invoice_format %}Total tax &amp; fees{% else %}Tax Amount{% endif %}</span><span class="amount">${% if is_special_invoice_format %}{{ special_tax_fees_total|floatformat:2 }}{% else %}{{ invoice.tax_amount|floatformat:2 }}{% endif %}</span></div>
+                    <div class="invoice-total-row"><span class="label">{% if is_special_invoice_format %}Total tax &amp; fees{% else %}Tax Amount{% endif %}</span><span class="amount">${% if is_special_invoice_format %}{{ special_tax_fees_total|floatformat:2 }}{% else %}{{ display_tax_amount|floatformat:2 }}{% endif %}</span></div>
                     <div class="invoice-total-row"><span class="label">Original Invoice Total</span><span class="amount">${% if is_special_invoice_format %}{{ special_original_total|floatformat:2 }}{% else %}{{ invoice.total_due|floatformat:2 }}{% endif %}</span></div>
                     <div class="invoice-total-row grand"><span class="label">{% if is_latest_issued_invoice %}Current Open Balance{% else %}Open Amount{% endif %}</span><span class="amount">${{ current_balance_due|floatformat:2 }}</span></div>
                 </div>
