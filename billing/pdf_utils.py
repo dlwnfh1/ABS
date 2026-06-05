@@ -206,14 +206,14 @@ def build_special_current_balance_due(invoice, special_original_total, today, is
 
 def build_invoice_pdf_context(invoice):
     today = timezone.localdate()
-    latest_issued_invoice = (
+    latest_invoice = (
         invoice.customer.invoices.exclude(status=Invoice.STATUS_VOID)
-        .filter(issue_date__lte=today)
         .order_by("-period_start", "-id")
         .first()
     )
     source_items = list(invoice.items.order_by("period_start", "id"))
-    is_latest_issued_invoice = bool(latest_issued_invoice and latest_issued_invoice.pk == invoice.pk)
+    is_latest_issued_invoice = bool(latest_invoice and latest_invoice.pk == invoice.pk)
+    balance_as_of = max(today, invoice.issue_date) if is_latest_issued_invoice and invoice.issue_date else today
     items = list(reversed(source_items))
     is_special_invoice_format = invoice.customer.account_number in SPECIAL_FORMAT_ACCOUNT_NUMBERS
     display_source_items = (
@@ -222,7 +222,7 @@ def build_invoice_pdf_context(invoice):
         else _filter_current_open_source_items(
             invoice,
             source_items,
-            today,
+            balance_as_of,
             is_latest_issued_invoice,
         )
     )
@@ -270,7 +270,7 @@ def build_invoice_pdf_context(invoice):
     if not is_special_invoice_format and len(display_source_items) < len(source_items):
         display_subtotal, display_tax_amount = _display_totals_for_source_items(invoice, display_source_items)
     current_balance_due = (
-        invoice.customer.open_balance_as_of(today)
+        invoice.customer.open_balance_as_of(balance_as_of)
         if is_latest_issued_invoice
         else invoice.amount_due_for_allocation(today)
     )
@@ -278,7 +278,7 @@ def build_invoice_pdf_context(invoice):
         current_balance_due = build_special_current_balance_due(
             invoice,
             special_original_total,
-            today,
+            balance_as_of,
             is_latest_issued_invoice,
         )
 
@@ -299,7 +299,7 @@ def build_invoice_pdf_context(invoice):
         "items": items,
         "padded_items": padded_items,
         "current_balance_due": current_balance_due,
-        "preview_date": today,
+        "preview_date": balance_as_of,
         "is_latest_issued_invoice": is_latest_issued_invoice,
         "logo_symbol_data_uri": logo_symbol_data_uri(),
         "billing_to_display": billing_to,

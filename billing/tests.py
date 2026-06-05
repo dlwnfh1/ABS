@@ -1,5 +1,6 @@
 ﻿from datetime import date
 from decimal import Decimal
+from unittest.mock import patch
 from django.test import TestCase
 from django.utils import timezone
 
@@ -376,6 +377,34 @@ class BillingWorkflowTests(TestCase):
         self.assertEqual(context["display_subtotal"], Decimal("540.00"))
         self.assertEqual(context["display_tax_amount"], Decimal("35.78"))
         self.assertEqual(context["current_balance_due"], Decimal("575.78"))
+
+    def test_future_issue_latest_invoice_pdf_context_uses_full_open_balance(self):
+        customer = Customer.objects.create(
+            name="Future Issue Co",
+            account_number="F100",
+            billing_address1="1 Future St",
+            tax_rate=Decimal("10.00"),
+            billing_term=3,
+            first_billing_date=date(2026, 1, 1),
+            email_address="123-456-7890",
+        )
+        Service.objects.create(
+            customer=customer,
+            service_name="Monitoring Service",
+            service_address1="1 Future St",
+            activation_date=date(2026, 1, 1),
+            billing_amount=Decimal("100.00"),
+        )
+        first_invoice = Invoice.objects.get(customer=customer, auto_generated=False)
+        second_invoice = first_invoice.generate_next_invoice()
+        third_invoice = second_invoice.generate_next_invoice()
+
+        with patch("billing.pdf_utils.timezone.localdate", return_value=date(2026, 6, 5)):
+            context = build_invoice_pdf_context(third_invoice)
+
+        self.assertEqual(third_invoice.issue_date, date(2026, 6, 16))
+        self.assertEqual(context["current_balance_due"], Decimal("330.00"))
+        self.assertEqual(context["preview_date"], third_invoice.issue_date)
 
 # Create your tests here.
 
