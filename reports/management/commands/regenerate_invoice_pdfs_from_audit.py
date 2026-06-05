@@ -8,6 +8,7 @@ from django.utils.text import slugify
 
 from billing.models import Invoice
 from billing.pdf_utils import get_invoice_output_base_folder, render_invoice_pdf_bytes
+from reports.models import InvoiceGenerationBatch, SavedInvoicePDF
 
 
 class Command(BaseCommand):
@@ -44,6 +45,7 @@ class Command(BaseCommand):
         result_path = Path(options["result_csv"]) if options.get("result_csv") else output_dir / "regeneration_result.csv"
 
         rows = []
+        batch = None
         for invoice_number in invoice_numbers:
             invoice = Invoice.objects.select_related("customer").filter(invoice_number=invoice_number).first()
             if not invoice:
@@ -63,7 +65,14 @@ class Command(BaseCommand):
 
             output_dir.mkdir(parents=True, exist_ok=True)
             output_path.write_bytes(pdf_bytes)
+            batch = batch or self._create_batch(invoice_numbers)
+            self._create_saved_pdf_record(batch, invoice, output_path)
             rows.append(self._result_row(invoice_number, "saved", str(output_path), ""))
+
+        if batch:
+            batch.saved_count = SavedInvoicePDF.objects.filter(batch=batch).count()
+            batch.customer_count = SavedInvoicePDF.objects.filter(batch=batch).values("account_number").distinct().count()
+            batch.save(update_fields=["saved_count", "customer_count"])
 
         self._write_result(rows, result_path, dry_run=options["dry_run"])
         saved_count = sum(1 for row in rows if row["status"] == "saved")
@@ -94,11 +103,20 @@ class Command(BaseCommand):
 
     def _resolve_output_dir(self, output_dir):
         if output_dir:
-            return Path(output_dir)
+            path = Path(output_dir)
         base_folder = get_invoice_output_base_folder()
         if not base_folder:
             raise CommandError("No invoice output folder is configured. Pass --output-dir explicitly.")
+        if output_dir:
+            self._validate_output_dir(path, base_folder)
+            return path
         return base_folder / f"regenerated-{timezone.localdate():%Y-%m-%d}"
+
+    def _validate_output_dir(self, output_dir, base_folder):
+        try:
+            output_dir.resolve().relative_to(base_folder.resolve())
+        except ValueError as exc:
+            raise CommandError("Output directory must be inside the configured invoice PDF output folder.") from exc
 
     def _build_filename(self, invoice):
         customer_slug = slugify(invoice.customer.name) or f"customer-{invoice.customer_id}"
@@ -119,6 +137,28 @@ class Command(BaseCommand):
             if not candidate.exists():
                 return candidate
             counter += 1
+
+    def _create_batch(self, invoice_numbers):
+        return InvoiceGenerationBatch.objects.create(
+            created_by="Regenerated from invoice PDF audit",
+            customer_count=len(invoice_numbers),
+        )
+
+    def _create_saved_pdf_record(self, batch, invoice, output_path):
+        base_folder = get_invoice_output_base_folder()
+        relative_path = str(output_path.relative_to(base_folder)).replace("\\", "/")
+        SavedInvoicePDF.objects.create(
+            batch=batch,
+            invoice=invoice,
+            customer=invoice.customer,
+            generated_date=timezone.localdate(),
+            account_number=invoice.customer.account_number,
+            customer_name=invoice.customer.name,
+            invoice_number=invoice.invoice_number,
+            marker="CURRENT",
+            relative_path=relative_path,
+            absolute_path=str(output_path),
+        )
 
     def _result_row(self, invoice_number, status, output_path, message):
         return {
