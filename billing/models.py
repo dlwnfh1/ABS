@@ -183,6 +183,7 @@ class Invoice(models.Model):
         if subtotal < Decimal("0.00"):
             subtotal = Decimal("0.00")
         tax_rate = self.customer.tax_rate
+        self.tax_rate = tax_rate
         gross_total = (prior_gross_outstanding + self.current_period_total).quantize(Decimal("0.01"))
         tax_amount = (gross_total - subtotal).quantize(Decimal("0.01"))
         if tax_amount < Decimal("0.00"):

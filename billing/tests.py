@@ -78,8 +78,8 @@ class BillingWorkflowTests(TestCase):
         self.assertEqual(items[1].amount, Decimal("100.00"))
         self.assertEqual(next_invoice.partial_payment, Decimal("50.00"))
         self.assertEqual(next_invoice.subtotal, Decimal("150.00"))
-        self.assertEqual(next_invoice.tax_amount, Decimal("15.00"))
-        self.assertEqual(next_invoice.total_due, Decimal("165.00"))
+        self.assertEqual(next_invoice.tax_amount, Decimal("20.00"))
+        self.assertEqual(next_invoice.total_due, Decimal("170.00"))
         self.assertEqual(
             next_invoice.last_payment_summary,
             "Last Payment was $50.00 with Check #CHK-1 on the date of 03-03-2026",

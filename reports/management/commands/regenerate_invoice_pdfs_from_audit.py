@@ -58,6 +58,8 @@ class Command(BaseCommand):
                 rows.append(self._result_row(invoice_number, "dry-run", str(output_path), "PDF was not written."))
                 continue
 
+            invoice.refresh_statement(commit=True)
+            invoice.refresh_from_db()
             pdf_bytes = render_invoice_pdf_bytes(invoice)
             if not pdf_bytes:
                 rows.append(self._result_row(invoice_number, "failed", str(output_path), "PDF rendering failed."))
