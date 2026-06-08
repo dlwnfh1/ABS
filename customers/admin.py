@@ -150,10 +150,10 @@ class CustomerAdmin(admin.ModelAdmin):
         "force_generate_all_due_action",
     ]
 
-    def _candidate_base_queryset(self, active_filter="all", term_filter="all"):
-        invoice_qs = (
-            Invoice.objects.exclude(status=Invoice.STATUS_VOID)
-            .prefetch_related(
+    def _candidate_base_queryset(self, active_filter="all", term_filter="all", include_allocations=True):
+        invoice_qs = Invoice.objects.exclude(status=Invoice.STATUS_VOID).order_by("-period_start", "-id")
+        if include_allocations:
+            invoice_qs = invoice_qs.prefetch_related(
                 Prefetch(
                     "allocations",
                     queryset=PaymentAllocation.objects.select_related("payment")
@@ -162,8 +162,16 @@ class CustomerAdmin(admin.ModelAdmin):
                     to_attr="_prefetched_valid_allocations",
                 )
             )
-            .order_by("-period_start", "-id")
-        )
+        else:
+            invoice_qs = invoice_qs.only(
+                "id",
+                "customer_id",
+                "period_start",
+                "period_end",
+                "issue_date",
+                "due_date",
+                "status",
+            )
         queryset = self.model.objects.annotate(
             invoice_total=Count("invoices", distinct=True),
             payment_total=Count("payments", distinct=True),
@@ -186,7 +194,11 @@ class CustomerAdmin(admin.ModelAdmin):
     def _ensure_candidate_map(self, params=None):
         active_filter = (params or {}).get("active_state", "active")
         term_filter = (params or {}).get("term", "all")
-        queryset = self._candidate_base_queryset(active_filter=active_filter, term_filter=term_filter)
+        queryset = self._candidate_base_queryset(
+            active_filter=active_filter,
+            term_filter=term_filter,
+            include_allocations=False,
+        )
         self._candidate_map = {
             customer.pk: {**self._build_customer_workflow(customer), "_customer": customer}
             for customer in queryset
@@ -293,7 +305,11 @@ class CustomerAdmin(admin.ModelAdmin):
         active_filter = filter_params.get("active_state", "active")
         term_filter = filter_params.get("term", "all")
         self._ensure_candidate_map(filter_params)
-        queryset = self._candidate_base_queryset(active_filter=active_filter, term_filter=term_filter)
+        queryset = self._candidate_base_queryset(
+            active_filter=active_filter,
+            term_filter=term_filter,
+            include_allocations=True,
+        )
 
         if status_filter != "all":
             customer_ids = [
@@ -978,24 +994,19 @@ class CustomerAdmin(admin.ModelAdmin):
             period_start = latest_invoice.next_period_start
             period_end = latest_invoice.next_period_end
             issue_date = period_start - timedelta(days=15)
-            existing_invoice = Invoice.objects.filter(customer=obj, period_start=period_start, period_end=period_end).first()
-            if existing_invoice:
-                status = "already_issued"
-                message = f"Already issued: {existing_invoice.invoice_number}"
+            days_until_issue = (issue_date - today).days
+            if days_until_issue <= 0:
+                status = "ready"
+                message = "Ready to generate."
+            elif days_until_issue <= 15:
+                status = "due_in_15"
+                message = f"Available on {issue_date:%Y-%m-%d}"
+            elif days_until_issue <= 30:
+                status = "due_in_30"
+                message = f"Available on {issue_date:%Y-%m-%d}"
             else:
-                days_until_issue = (issue_date - today).days
-                if days_until_issue <= 0:
-                    status = "ready"
-                    message = "Ready to generate."
-                elif days_until_issue <= 15:
-                    status = "due_in_15"
-                    message = f"Available on {issue_date:%Y-%m-%d}"
-                elif days_until_issue <= 30:
-                    status = "due_in_30"
-                    message = f"Available on {issue_date:%Y-%m-%d}"
-                else:
-                    status = "already_issued"
-                    message = f"Current invoice already issued. Next opens on {issue_date:%Y-%m-%d}"
+                status = "already_issued"
+                message = f"Current invoice already issued. Next opens on {issue_date:%Y-%m-%d}"
             return {
                 "status": status,
                 "message": message,

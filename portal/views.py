@@ -677,8 +677,9 @@ def customer_list_view(request):
     page_obj, page_query, page_numbers = _paginate_items(request, customers, 25)
 
     rows = []
+    today = timezone.localdate()
     for customer in page_obj.object_list:
-        workflow = _customer_workflow_snapshot(customer, timezone.localdate())
+        workflow = _customer_workflow_snapshot(customer, today)
         latest_invoice = next(iter(customer._nonvoid_invoices_cache()), None)
         if latest_invoice:
             period = f"{latest_invoice.next_period_start:%m/%d/%Y} - {latest_invoice.next_period_end:%m/%d/%Y}"
@@ -690,7 +691,7 @@ def customer_list_view(request):
                 "customer": customer,
                 "workflow_status": workflow["status"],
                 "next_billing_period": period,
-                "open_balance": customer.open_balance_as_of(timezone.localdate()),
+                "open_balance": customer.open_balance_as_of(today),
                 "last_payment": last_payment,
                 "quick_payment_url": f'{reverse("portal:quick_payment")}?customer={customer.pk}',
                 "statement_url": f'{reverse("portal:customer_statement")}?customer={customer.pk}',
