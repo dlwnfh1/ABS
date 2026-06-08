@@ -578,6 +578,7 @@ class PaymentAdmin(admin.ModelAdmin):
             "name": customer.name,
             "account_number": customer.account_number,
             "open_balance": customer.open_balance_as_of(),
+            "credit_balance": customer.credit_balance,
             "last_payment": latest_payment,
             "current_billing_amount": customer.current_billing_amount,
             "billing_term": customer.get_billing_term_display(),

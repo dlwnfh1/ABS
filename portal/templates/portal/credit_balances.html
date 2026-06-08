@@ -1,0 +1,88 @@
+{% extends "portal/base.html" %}
+{% load humanize %}
+{% block content %}
+<div class="card" style="margin-bottom:18px;">
+    <form method="get" class="btn-row" style="margin:0;">
+        <button class="{% if scope == 'current' %}btn-primary{% else %}btn-secondary{% endif %}" type="submit" name="scope" value="current">Current Credits</button>
+        <button class="{% if scope == 'resolved' %}btn-primary{% else %}btn-secondary{% endif %}" type="submit" name="scope" value="resolved">Resolved Credits</button>
+        <button class="{% if scope == 'all' %}btn-primary{% else %}btn-secondary{% endif %}" type="submit" name="scope" value="all">All Credit History</button>
+    </form>
+</div>
+
+<div class="grid cards-3">
+    <div class="card"><div class="stat-label">Customers</div><div class="stat-value">{{ totals.customer_count }}</div></div>
+    <div class="card"><div class="stat-label">Credit Payments</div><div class="stat-value">{{ totals.payment_count }}</div></div>
+    <div class="card"><div class="stat-label">{% if scope == 'resolved' %}Current Credit Remaining{% else %}Total Credit Balance{% endif %}</div><div class="stat-value">${{ totals.credit_total|floatformat:2|intcomma }}</div></div>
+</div>
+
+<div class="card" style="margin-top:18px;">
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Customer</th>
+                    <th>Account #</th>
+                    <th>Credit Balance</th>
+                    <th>Open Balance</th>
+                    <th>Credit Detail</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for row in rows %}
+                <tr>
+                    <td>{{ row.customer.name }}</td>
+                    <td>{{ row.customer.display_account_number }}</td>
+                    <td>${{ row.credit_balance|floatformat:2|intcomma }}</td>
+                    <td>${{ row.open_balance|floatformat:2|intcomma }}</td>
+                    <td>
+                        {% for item in row.payments %}
+                            <div style="margin-bottom:8px;">
+                                {% if item.status == "Current" %}
+                                <strong>${{ item.unapplied_amount|floatformat:2|intcomma }}</strong>
+                                remaining from payment
+                                {% else %}
+                                Resolved credit from payment
+                                {% endif %}
+                                <strong>${{ item.payment.amount|floatformat:2|intcomma }}</strong>
+                                on {{ item.payment.payment_date|date:"m/d/Y" }}
+                                (applied ${{ item.payment.applied_amount|floatformat:2|intcomma }})
+                                {% if item.payment.reference_number %}<br>Ref: {{ item.payment.reference_number }}{% endif %}
+                            </div>
+                        {% endfor %}
+                    </td>
+                    <td>
+                        <a href="{{ row.statement_url }}">Statement</a><br>
+                        <a href="{{ row.quick_payment_url }}">Add Payment</a>
+                    </td>
+                </tr>
+            {% empty %}
+                <tr><td colspan="6">No customers currently have a credit balance.</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if page_obj and page_obj.paginator.num_pages > 1 %}
+    <div class="pagination">
+        <div class="page-info">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</div>
+        <div class="page-links">
+            {% if page_obj.has_previous %}
+                <a class="btn btn-secondary" href="?{% if page_query %}{{ page_query }}&{% endif %}page={{ page_obj.previous_page_number }}">Previous</a>
+            {% endif %}
+            {% for num in page_numbers %}
+                {% if num == page_obj.paginator.ELLIPSIS %}
+                    <span class="page-ellipsis">...</span>
+                {% elif page_obj.number == num %}
+                    <span class="page-link active">{{ num }}</span>
+                {% else %}
+                    <a class="page-link" href="?{% if page_query %}{{ page_query }}&{% endif %}page={{ num }}">{{ num }}</a>
+                {% endif %}
+            {% endfor %}
+            {% if page_obj.has_next %}
+                <a class="btn btn-secondary" href="?{% if page_query %}{{ page_query }}&{% endif %}page={{ page_obj.next_page_number }}">Next</a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

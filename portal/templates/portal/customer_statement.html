@@ -33,6 +33,12 @@
         <div class="stat-label">Open Balance</div>
         <div class="stat-value" style="font-size:1.3rem;">${{ open_balance }}</div>
     </div>
+    {% if credit_balance > 0 %}
+        <div class="card">
+            <div class="stat-label">Credit Balance</div>
+            <div class="stat-value" style="font-size:1.3rem;">${{ credit_balance }}</div>
+        </div>
+    {% endif %}
     <div class="card">
         <div class="stat-label">Last Payment</div>
         <div class="stat-value" style="font-size:1.3rem;">

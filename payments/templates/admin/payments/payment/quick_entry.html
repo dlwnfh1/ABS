@@ -205,6 +205,12 @@
                         <div class="quick-summary-label">Open Balance</div>
                         <div class="quick-summary-value">${{ customer_summary.open_balance|floatformat:2 }}</div>
                     </div>
+                    {% if customer_summary.credit_balance > 0 %}
+                    <div class="quick-summary-card">
+                        <div class="quick-summary-label">Credit Balance</div>
+                        <div class="quick-summary-value">${{ customer_summary.credit_balance|floatformat:2 }}</div>
+                    </div>
+                    {% endif %}
                     <div class="quick-summary-card">
                         <div class="quick-summary-label">Billing Term</div>
                         <div class="quick-summary-value">{{ customer_summary.billing_term }}</div>
@@ -226,11 +232,11 @@
             {% if preview %}
                 <div class="quick-summary" style="margin-bottom:14px;">
                     <div class="quick-summary-card">
-                        <div class="quick-summary-label">Open Balance on Payment Date</div>
+                        <div class="quick-summary-label">Available Invoice Balance</div>
                         <div class="quick-summary-value">${{ preview.available_balance|floatformat:2 }}</div>
                     </div>
                     <div class="quick-summary-card">
-                        <div class="quick-summary-label">Unapplied After Preview</div>
+                        <div class="quick-summary-label">Customer Credit After Preview</div>
                         <div class="quick-summary-value">${{ preview.unapplied_amount|floatformat:2 }}</div>
                     </div>
                 </div>

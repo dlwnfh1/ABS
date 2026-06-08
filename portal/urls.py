@@ -48,6 +48,7 @@ urlpatterns = [
     path("reports/upcoming-billing/", views.upcoming_billing_view, name="upcoming_billing"),
     path("reports/non-billable-customers/", views.non_billable_customers_view, name="non_billable_customers"),
     path("reports/auto-ach-review/", views.auto_ach_review_view, name="auto_ach_review"),
+    path("reports/credit-balances/", views.credit_balances_view, name="credit_balances"),
     path("reports/customer-statement/", views.customer_statement_view, name="customer_statement"),
     path("reports/customer-statement/send-email/", views.customer_statement_send_email_view, name="customer_statement_send_email"),
 ]

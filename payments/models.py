@@ -2,7 +2,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from django.core.exceptions import ValidationError
-from django.db import models
+from django.db import models, transaction
 from django.utils import timezone
 
 
@@ -45,6 +45,10 @@ class Payment(models.Model):
     def applied_amount(self) -> Decimal:
         if self.is_voided:
             return Decimal("0.00")
+        prefetched = getattr(self, "_prefetched_objects_cache", {})
+        if "allocations" in prefetched:
+            total = sum((Decimal(allocation.amount) for allocation in prefetched["allocations"]), Decimal("0.00"))
+            return Decimal(total).quantize(Decimal("0.01"))
         total = self.allocations.aggregate(total=models.Sum("amount"))["total"] or Decimal("0.00")
         return Decimal(total).quantize(Decimal("0.01"))
 
@@ -55,34 +59,12 @@ class Payment(models.Model):
         return (Decimal(self.amount) - self.applied_amount).quantize(Decimal("0.01"))
 
     def clean(self):
-        from billing.models import Invoice
-
         if self.is_voided:
             return
         if self.amount <= Decimal("0.00"):
             raise ValidationError("Payment amount must be greater than zero.")
         if not self.customer_id:
             raise ValidationError("Customer is required.")
-
-        invoices = (
-            Invoice.objects.filter(customer=self.customer)
-            .exclude(status=Invoice.STATUS_VOID)
-            .order_by("period_start", "id")
-        )
-        available_balance = Decimal("0.00")
-        for invoice in invoices:
-            if invoice.issue_date and invoice.issue_date > self.payment_date:
-                continue
-            available_balance += invoice.amount_due_for_allocation(
-                as_of_date=self.payment_date,
-                exclude_payment_id=self.pk,
-            )
-
-        available_balance = available_balance.quantize(Decimal("0.01"))
-        if available_balance <= Decimal("0.00"):
-            raise ValidationError("Customer has no open invoices available for this payment date.")
-        if Decimal(self.amount) > available_balance:
-            raise ValidationError(f"Payment exceeds the customer's open balance of ${available_balance:.2f}.")
 
     def save(self, *args, **kwargs):
         self.full_clean()
@@ -92,7 +74,7 @@ class Payment(models.Model):
     def delete(self, *args, **kwargs):
         customer = self.customer
         super().delete(*args, **kwargs)
-        self.refresh_customer_invoices(customer)
+        self.reallocate_customer_payments(customer)
 
     def void(self, reason=""):
         if self.is_voided:
@@ -106,7 +88,7 @@ class Payment(models.Model):
             void_reason=self.void_reason,
         )
         self.allocations.all().delete()
-        self.refresh_customer_invoices(self.customer)
+        self.reallocate_customer_payments(self.customer)
 
     @property
     def has_scanned_check(self):
@@ -132,9 +114,7 @@ class Payment(models.Model):
         preview_rows = []
         remaining = amount
 
-        for invoice in invoices:
-            if invoice.issue_date and invoice.issue_date > payment_date:
-                continue
+        for invoice in cls._allocation_invoice_sequence(invoices, payment_date):
             amount_due = invoice.amount_due_for_allocation(
                 as_of_date=payment_date,
                 exclude_payment_id=exclude_payment_id,
@@ -164,43 +144,58 @@ class Payment(models.Model):
         }
 
     def reallocate(self):
+        self.reallocate_customer_payments(self.customer)
+
+    @classmethod
+    def reallocate_customer_payments(cls, customer):
         from billing.models import Invoice
 
-        self.allocations.all().delete()
-        if self.is_voided:
-            self.refresh_customer_invoices(self.customer)
-            return
-        invoices = list(
-            Invoice.objects.filter(customer=self.customer)
-            .exclude(status=Invoice.STATUS_VOID)
-            .order_by("period_start", "id")
-        )
-
-        for invoice in invoices:
-            invoice.refresh_statement(commit=True)
-
-        remaining = Decimal(self.amount)
-        for invoice in invoices:
-            if remaining <= Decimal("0.00"):
-                break
-            if invoice.issue_date and invoice.issue_date > self.payment_date:
-                continue
-            amount_due = invoice.amount_due_for_allocation(
-                as_of_date=self.payment_date,
-                exclude_payment_id=self.pk,
+        with transaction.atomic():
+            payments = list(
+                cls.objects.filter(customer=customer, is_voided=False)
+                .order_by("payment_date", "id")
             )
-            if amount_due <= Decimal("0.00"):
-                continue
-
-            applied_amount = min(remaining, amount_due).quantize(Decimal("0.01"))
-            PaymentAllocation.objects.create(
-                payment=self,
-                invoice=invoice,
-                amount=applied_amount,
+            invoices = list(
+                Invoice.objects.filter(customer=customer)
+                .exclude(status=Invoice.STATUS_VOID)
+                .order_by("period_start", "id")
             )
-            remaining -= applied_amount
 
-        self.refresh_customer_invoices(self.customer)
+            PaymentAllocation.objects.filter(payment__customer=customer).delete()
+
+            for invoice in invoices:
+                invoice.refresh_statement(commit=True)
+
+            for payment in payments:
+                remaining = Decimal(payment.amount).quantize(Decimal("0.01"))
+                for invoice in cls._allocation_invoice_sequence(invoices, payment.payment_date):
+                    if remaining <= Decimal("0.00"):
+                        break
+
+                    amount_due = invoice.amount_due_for_allocation(exclude_payment_id=payment.pk)
+                    if amount_due <= Decimal("0.00"):
+                        continue
+
+                    applied_amount = min(remaining, amount_due).quantize(Decimal("0.01"))
+                    PaymentAllocation.objects.create(
+                        payment=payment,
+                        invoice=invoice,
+                        amount=applied_amount,
+                    )
+                    remaining -= applied_amount
+
+            cls.refresh_customer_invoices(customer)
+
+    @staticmethod
+    def _allocation_invoice_sequence(invoices, payment_date):
+        current_or_issued = []
+        future_issued = []
+        for invoice in invoices:
+            if invoice.issue_date and invoice.issue_date > payment_date:
+                future_issued.append(invoice)
+            else:
+                current_or_issued.append(invoice)
+        return current_or_issued + future_issued
 
     @staticmethod
     def refresh_customer_invoices(customer):

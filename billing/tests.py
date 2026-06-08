@@ -165,6 +165,30 @@ class BillingWorkflowTests(TestCase):
         self.assertEqual(items[0].line_type, InvoiceItem.LINE_CARRYOVER)
         self.assertEqual(items[0].amount, Decimal("100.00"))
 
+    def test_credit_paid_latest_invoice_pdf_context_shows_charge_and_credit(self):
+        first_invoice = Invoice.objects.get(customer=self.customer, auto_generated=False)
+        payment = Payment.objects.create(
+            customer=self.customer,
+            amount=Decimal("220.00"),
+            payment_date=date(2026, 1, 5),
+            method=Payment.METHOD_CHECK,
+            reference_number="ADVANCE",
+        )
+
+        next_invoice = first_invoice.generate_next_invoice()
+        context = build_invoice_pdf_context(next_invoice)
+
+        payment.refresh_from_db()
+        self.assertEqual(payment.unapplied_amount, Decimal("0.00"))
+        self.assertEqual(next_invoice.allocated_amount_as_of(), Decimal("110.00"))
+        self.assertEqual(context["credit_applied_amount"], Decimal("110.00"))
+        self.assertEqual(context["display_subtotal"], Decimal("100.00"))
+        self.assertEqual(context["display_tax_amount"], Decimal("10.00"))
+        self.assertEqual(context["display_original_total"], Decimal("110.00"))
+        self.assertEqual(context["current_balance_due"], Decimal("0.00"))
+        self.assertEqual(context["display_items"][0]["description"], "Internet")
+        self.assertEqual(context["display_items"][0]["period_start"], next_invoice.period_start)
+
     def test_customer_open_balance_matches_latest_invoice_less_later_payments(self):
         first_invoice = Invoice.objects.get(customer=self.customer, auto_generated=False)
         second_invoice = first_invoice.generate_next_invoice()

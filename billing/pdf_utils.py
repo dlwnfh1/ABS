@@ -94,11 +94,24 @@ def _filter_current_open_source_items(invoice, source_items, today, is_latest_is
         if key in period_keys and related_invoice.amount_due_for_allocation(today) > Decimal("0.00"):
             open_period_keys.add(key)
 
-    return [
+    filtered_items = [
         item
         for item in source_items
         if (item.period_start, item.period_end) in open_period_keys
     ]
+    if filtered_items:
+        return filtered_items
+
+    if invoice.allocated_amount_as_of(today) > Decimal("0.00"):
+        current_items = [
+            item
+            for item in source_items
+            if item.line_type == "current_period"
+        ]
+        if current_items:
+            return current_items
+
+    return filtered_items
 
 
 def _display_totals_for_source_items(invoice, display_source_items):
@@ -122,6 +135,12 @@ def _display_totals_for_source_items(invoice, display_source_items):
     )
     subtotal = sum((Decimal(item.amount) for item in display_source_items), Decimal("0.00"))
     return subtotal.quantize(Decimal("0.01")), tax_amount.quantize(Decimal("0.01"))
+
+
+def _payments_and_credits_applied_to_invoice(invoice, as_of_date):
+    allocated = invoice.allocated_amount_as_of(as_of_date=as_of_date)
+    adjusted = invoice.settlement_adjusted_amount_as_of(as_of_date=as_of_date)
+    return (allocated + adjusted).quantize(Decimal("0.01"))
 
 
 def build_special_invoice_display_items(invoice, source_items):
@@ -269,6 +288,8 @@ def build_invoice_pdf_context(invoice):
     display_tax_amount = Decimal(invoice.tax_amount)
     if not is_special_invoice_format and len(display_source_items) < len(source_items):
         display_subtotal, display_tax_amount = _display_totals_for_source_items(invoice, display_source_items)
+    display_original_total = (display_subtotal + display_tax_amount).quantize(Decimal("0.01"))
+    credit_applied_amount = _payments_and_credits_applied_to_invoice(invoice, balance_as_of)
     current_balance_due = (
         invoice.customer.open_balance_as_of(balance_as_of)
         if is_latest_issued_invoice
@@ -311,6 +332,8 @@ def build_invoice_pdf_context(invoice):
         "special_original_total": special_original_total,
         "display_subtotal": display_subtotal,
         "display_tax_amount": display_tax_amount,
+        "display_original_total": display_original_total,
+        "credit_applied_amount": credit_applied_amount,
     }
 
 

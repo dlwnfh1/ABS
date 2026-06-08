@@ -280,6 +280,9 @@ class Invoice(models.Model):
         self.full_clean()
         super().save(*args, **kwargs)
         self.refresh_statement(commit=True)
+        from payments.models import Payment
+
+        Payment.reallocate_customer_payments(self.customer)
         if create_followup:
             self.refresh_future_invoices()
 

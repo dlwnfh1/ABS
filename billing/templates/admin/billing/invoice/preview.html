@@ -191,7 +191,8 @@
             <div class="invoice-balance-grid">
                 <div>
                     {% if invoice.partial_payment > 0 %}<div class="invoice-note payment"><p><strong>Partial payment applied before this invoice:</strong> ${{ invoice.partial_payment|floatformat:2 }}</p></div>{% endif %}
-                    {% if is_latest_issued_invoice and current_balance_due != invoice.total_due %}<div class="invoice-note"><p><strong>Current customer balance as of {{ preview_date|date:"m/d/Y" }}:</strong> ${{ current_balance_due|floatformat:2 }}. Original invoice total when issued was ${{ invoice.total_due|floatformat:2 }}.</p></div>{% endif %}
+                    {% if is_latest_issued_invoice and current_balance_due != invoice.total_due %}<div class="invoice-note"><p><strong>Current customer balance as of {{ preview_date|date:"m/d/Y" }}:</strong> ${{ current_balance_due|floatformat:2 }}. Original invoice total when issued was ${% if is_special_invoice_format %}{{ special_original_total|floatformat:2 }}{% else %}{{ display_original_total|floatformat:2 }}{% endif %}.</p></div>{% endif %}
+                    {% if credit_applied_amount > 0 %}<div class="invoice-note"><p><strong>Payments / credits applied to this invoice:</strong> ${{ credit_applied_amount|floatformat:2 }}</p></div>{% endif %}
                     {% if invoice.last_payment_summary %}<div class="invoice-note last-payment"><div class="note-label">Last Payment</div><p>{{ invoice.last_payment_summary }}</p></div>{% endif %}
                     <div class="invoice-note" style="margin-bottom:0;"><p>Send only the detached top remittance slip with mailed payments. Keep the lower invoice portion for your records.</p></div>
                 </div>
@@ -200,7 +201,8 @@
                     <div class="invoice-total-row"><span class="label">Subtotal</span><span class="amount">${% if is_special_invoice_format %}{{ special_subtotal|floatformat:2 }}{% else %}{{ display_subtotal|floatformat:2 }}{% endif %}</span></div>
                     {% if not is_special_invoice_format %}<div class="invoice-total-row"><span class="label">Tax Rate</span><span class="amount">{{ invoice.tax_rate }}%</span></div>{% endif %}
                     <div class="invoice-total-row"><span class="label">{% if is_special_invoice_format %}Total tax &amp; fees{% else %}Tax Amount{% endif %}</span><span class="amount">${% if is_special_invoice_format %}{{ special_tax_fees_total|floatformat:2 }}{% else %}{{ display_tax_amount|floatformat:2 }}{% endif %}</span></div>
-                    <div class="invoice-total-row"><span class="label">Original Invoice Total</span><span class="amount">${% if is_special_invoice_format %}{{ special_original_total|floatformat:2 }}{% else %}{{ invoice.total_due|floatformat:2 }}{% endif %}</span></div>
+                    <div class="invoice-total-row"><span class="label">Original Invoice Total</span><span class="amount">${% if is_special_invoice_format %}{{ special_original_total|floatformat:2 }}{% else %}{{ display_original_total|floatformat:2 }}{% endif %}</span></div>
+                    {% if credit_applied_amount > 0 %}<div class="invoice-total-row"><span class="label">Payments / Credits Applied</span><span class="amount">-${{ credit_applied_amount|floatformat:2 }}</span></div>{% endif %}
                     <div class="invoice-total-row grand"><span class="label">{% if is_latest_issued_invoice %}Current Open Balance{% else %}Open Amount{% endif %}</span><span class="amount">${{ current_balance_due|floatformat:2 }}</span></div>
                 </div>
             </div>

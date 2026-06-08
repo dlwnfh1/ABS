@@ -385,6 +385,17 @@ class CustomerAdmin(admin.ModelAdmin):
                 "value": f"${open_balance.quantize(Decimal('0.01')):.2f}",
                 "tone": "alert" if open_balance > Decimal("0.00") else "normal",
             },
+            *(
+                [
+                    {
+                        "label": "Credit Balance",
+                        "value": f"${customer.credit_balance:.2f}",
+                        "tone": "normal",
+                    }
+                ]
+                if customer.credit_balance > Decimal("0.00")
+                else []
+            ),
             {
                 "label": "Next Status",
                 "value": status_label,

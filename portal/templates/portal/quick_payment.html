@@ -59,6 +59,12 @@
                     <div class="stat-label">Open Balance</div>
                     <div class="stat-value" style="font-size:1.35rem;">${{ customer_summary.open_balance }}</div>
                 </div>
+                {% if customer_summary.credit_balance > 0 %}
+                    <div class="card">
+                        <div class="stat-label">Credit Balance</div>
+                        <div class="stat-value" style="font-size:1.35rem;">${{ customer_summary.credit_balance }}</div>
+                    </div>
+                {% endif %}
                 <div class="card">
                     <div class="stat-label">Billing Term</div>
                     <div class="stat-value" style="font-size:1.35rem;">{{ customer_summary.billing_term }}</div>
@@ -90,11 +96,11 @@
                 <h3>Allocation Preview</h3>
                 <div class="grid cards-3">
                     <div class="card">
-                        <div class="stat-label">Open Balance on Payment Date</div>
+                        <div class="stat-label">Available Invoice Balance</div>
                         <div class="stat-value" style="font-size:1.5rem;">${{ preview.available_balance }}</div>
                     </div>
                     <div class="card">
-                        <div class="stat-label">Unapplied After Preview</div>
+                        <div class="stat-label">Customer Credit After Preview</div>
                         <div class="stat-value" style="font-size:1.5rem;">${{ preview.unapplied_amount }}</div>
                     </div>
                 </div>

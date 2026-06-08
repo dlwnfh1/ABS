@@ -447,77 +447,16 @@ class InvoiceAdmin(admin.ModelAdmin):
 
 
     def _invoice_document_context(self, request, invoice):
-        today = timezone.localdate()
-        latest_issued_invoice = (
-            invoice.customer.invoices.exclude(status=Invoice.STATUS_VOID)
-            .filter(issue_date__lte=today)
-            .order_by("-period_start", "-id")
-            .first()
-        )
-        source_items = list(invoice.items.order_by("period_start", "id"))
-        items = list(reversed(source_items))
-        padded_items = [
-            {
-                "description": item.description,
-                "period_start": item.period_start,
-                "period_end": item.period_end,
-                "amount": item.amount,
-                "line_type": item.line_type,
-            }
-            for item in items
-        ]
-        if len(padded_items) > 5:
-            overflow_items = padded_items[4:]
-            padded_items = padded_items[:4]
-            padded_items.append(
-                {
-                    "description": "Additional prior billing periods",
-                    "period_start": overflow_items[-1]["period_start"],
-                    "period_end": overflow_items[0]["period_end"],
-                    "amount": sum(item["amount"] for item in overflow_items),
-                    "line_type": "rollup",
-                }
-            )
-        while len(padded_items) < 5:
-            padded_items.append(
-                {
-                    "description": "",
-                    "period_start": None,
-                    "period_end": None,
-                    "amount": None,
-                    "line_type": "",
-                }
-            )
-
-        billing_to = invoice.customer.billing_address1
-        if invoice.customer.billing_address2:
-            billing_to = f"{billing_to}, {invoice.customer.billing_address2}"
-
-        primary_service = invoice.customer.services.filter(is_active=True).order_by("id").first()
-        if primary_service:
-            service_at = primary_service.service_address1
-            if primary_service.service_address2:
-                service_at = f"{service_at}, {primary_service.service_address2}"
-        else:
-            service_at = billing_to
-
-        return {
+        context = {
             **self.admin_site.each_context(request),
             "opts": self.model._meta,
             "title": f"Invoice Preview {invoice.invoice_number}",
-            "invoice": invoice,
-            "items": items,
-            "padded_items": padded_items,
-            "current_balance_due": invoice.customer.open_balance_as_of(today) if latest_issued_invoice and latest_issued_invoice.pk == invoice.pk else invoice.amount_due_for_allocation(today),
-            "preview_date": today,
-            "is_latest_issued_invoice": bool(latest_issued_invoice and latest_issued_invoice.pk == invoice.pk),
             "invoice_pdf_url": reverse("admin:billing_invoice_pdf", args=[invoice.pk]),
             "invoice_print_url": reverse("admin:billing_invoice_print", args=[invoice.pk]),
             "pdf_cache_buster": timezone.now().strftime("%Y%m%d%H%M%S%f"),
-            "logo_symbol_data_uri": logo_symbol_data_uri(),
-            "billing_to_display": billing_to,
-            "service_at_display": service_at,
         }
+        context.update(build_invoice_pdf_context(invoice))
+        return context
 
     def generator_view(self, request):
         candidates = Invoice.get_generation_candidates()

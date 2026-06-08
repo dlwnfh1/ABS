@@ -144,6 +144,11 @@ class Customer(models.Model):
             balance += invoice.amount_due_for_allocation(as_of_date=as_of_date)
         return max(balance, Decimal("0.00")).quantize(Decimal("0.01"))
 
+    @property
+    def credit_balance(self) -> Decimal:
+        credit = sum((payment.unapplied_amount for payment in self._active_payments_cache()), Decimal("0.00"))
+        return max(credit, Decimal("0.00")).quantize(Decimal("0.01"))
+
     def next_expected_issue_date(self):
         latest_invoice = next(iter(self._nonvoid_invoices_cache()), None)
         if latest_invoice:

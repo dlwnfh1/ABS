@@ -230,6 +230,7 @@ def _customer_summary(customer):
         "name": customer.name,
         "account_number": customer.account_number,
         "open_balance": customer.open_balance_as_of(),
+        "credit_balance": customer.credit_balance,
         "last_payment": latest_payment,
         "current_billing_amount": customer.current_billing_amount,
         "billing_term": customer.get_billing_term_display(),
@@ -1322,6 +1323,7 @@ def report_index_view(request):
         {"title": "Upcoming Billing Schedule", "description": "Customers whose invoices are ready now or due soon.", "url": reverse("portal:upcoming_billing")},
         {"title": "Non-Billable Customers", "description": "Active customers and services that are on billing hold or marked complimentary.", "url": reverse("portal:non_billable_customers")},
         {"title": "Auto ACH Review", "description": "Auto ACH customers whose payments should be reviewed before the next billing issue date.", "url": reverse("portal:auto_ach_review")},
+        {"title": "Credit Balance Customers", "description": "Customers with unapplied payment credits and payment-level details.", "url": reverse("portal:credit_balances")},
         {"title": "Customer Statement", "description": "Invoice and payment history for a single customer.", "url": reverse("portal:customer_statement")},
     ]
     return render(request, "portal/report_index.html", _portal_context(request, active_nav="reports", title="Reports", report_links=report_links))
@@ -1657,6 +1659,95 @@ def auto_ach_review_view(request):
     )
 
 
+def _build_credit_balances_data(scope="current"):
+    today = timezone.localdate()
+    if scope not in {"current", "resolved", "all"}:
+        scope = "current"
+    rows = []
+    total_credit = Decimal("0.00")
+    payments = (
+        Payment.objects.filter(is_voided=False)
+        .select_related("customer")
+        .prefetch_related("allocations__invoice")
+        .order_by("customer__name", "customer__account_number", "payment_date", "id")
+    )
+    customer_map = {}
+    for payment in payments:
+        unapplied = payment.unapplied_amount
+        was_credit = unapplied > Decimal("0.00") or any(
+            (
+                allocation.invoice.issue_date
+                and allocation.invoice.issue_date > payment.payment_date
+            )
+            or allocation.invoice.created_at > payment.created_at
+            for allocation in payment.allocations.all()
+        )
+        is_resolved = was_credit and unapplied <= Decimal("0.00")
+        if scope == "current" and unapplied <= Decimal("0.00"):
+            continue
+        if scope == "resolved" and not is_resolved:
+            continue
+        if scope == "all" and not was_credit:
+            continue
+        customer = payment.customer
+        entry = customer_map.setdefault(
+            customer.pk,
+            {
+                "customer": customer,
+                "credit_balance": Decimal("0.00"),
+                "open_balance": customer.open_balance_as_of(today),
+                "payments": [],
+                "statement_url": f'{reverse("portal:customer_statement")}?customer={customer.pk}',
+                "quick_payment_url": f'{reverse("portal:quick_payment")}?customer={customer.pk}',
+            },
+        )
+        entry["credit_balance"] += unapplied
+        entry["payments"].append(
+            {
+                "payment": payment,
+                "unapplied_amount": unapplied,
+                "status": "Current" if unapplied > Decimal("0.00") else "Resolved",
+            }
+        )
+        total_credit += unapplied
+
+    rows = sorted(
+        customer_map.values(),
+        key=lambda row: (row["customer"].name.lower(), row["customer"].account_number),
+    )
+    totals = {
+        "customer_count": len(rows),
+        "payment_count": sum(len(row["payments"]) for row in rows),
+        "credit_total": total_credit.quantize(Decimal("0.01")),
+    }
+    return today, rows, totals
+
+
+@login_required(login_url="portal:login")
+def credit_balances_view(request):
+    scope = (request.GET.get("scope") or "current").strip().lower()
+    if scope not in {"current", "resolved", "all"}:
+        scope = "current"
+    report_date, rows, totals = _build_credit_balances_data(scope=scope)
+    page_obj, page_query, page_numbers = _paginate_items(request, rows, 50)
+    return render(
+        request,
+        "portal/credit_balances.html",
+        _portal_context(
+            request,
+            active_nav="reports",
+            title="Credit Balance Customers",
+            report_date=report_date,
+            scope=scope,
+            rows=page_obj.object_list,
+            totals=totals,
+            page_obj=page_obj,
+            page_query=page_query,
+            page_numbers=page_numbers,
+        ),
+    )
+
+
 @login_required(login_url="portal:login")
 def customer_statement_view(request):
     customers = Customer.objects.order_by("name", "account_number")
@@ -1667,6 +1758,7 @@ def customer_statement_view(request):
     invoice_count = 0
     payment_count = 0
     open_balance = Decimal("0.00")
+    credit_balance = Decimal("0.00")
     last_payment = None
     primary_service = None
     show_all_invoices = request.GET.get("show_all_invoices") == "1"
@@ -1692,6 +1784,7 @@ def customer_statement_view(request):
             except PaymentSettlement.DoesNotExist:
                 payment.settlement_record = None
         open_balance = selected_customer.open_balance_as_of(today)
+        credit_balance = selected_customer.credit_balance
         last_payment = payment_qs.first()
         saved_qs = (
             SavedInvoicePDF.objects.filter(customer=selected_customer)
@@ -1731,6 +1824,7 @@ def customer_statement_view(request):
             show_all_invoices=show_all_invoices,
             show_all_payments=show_all_payments,
             open_balance=open_balance,
+            credit_balance=credit_balance,
             last_payment=last_payment,
             primary_service=primary_service,
         ),
