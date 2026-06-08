@@ -282,7 +282,8 @@ class Invoice(models.Model):
         self.refresh_statement(commit=True)
         from payments.models import Payment
 
-        Payment.reallocate_customer_payments(self.customer)
+        if Payment.objects.filter(customer=self.customer, is_voided=False).exists():
+            Payment.reallocate_customer_payments(self.customer)
         if create_followup:
             self.refresh_future_invoices()
 

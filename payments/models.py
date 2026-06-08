@@ -107,6 +107,15 @@ class Payment(models.Model):
         invoices = list(
             Invoice.objects.filter(customer=customer)
             .exclude(status=Invoice.STATUS_VOID)
+            .prefetch_related(
+                models.Prefetch(
+                    "allocations",
+                    queryset=PaymentAllocation.objects.select_related("payment")
+                    .filter(payment__is_voided=False)
+                    .order_by("payment__payment_date", "id"),
+                    to_attr="_prefetched_valid_allocations",
+                )
+            )
             .order_by("period_start", "id")
         )
 

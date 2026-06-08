@@ -17,6 +17,7 @@ from django.utils.html import format_html
 from django.utils import timezone
 from billing.models import Invoice
 from billing.pdf_utils import save_invoices_to_configured_folder
+from payments.models import PaymentAllocation
 from reports.notifications import send_billing_dispatch_alert
 
 from .models import Customer, Service
@@ -150,6 +151,19 @@ class CustomerAdmin(admin.ModelAdmin):
     ]
 
     def _candidate_base_queryset(self, active_filter="all", term_filter="all"):
+        invoice_qs = (
+            Invoice.objects.exclude(status=Invoice.STATUS_VOID)
+            .prefetch_related(
+                Prefetch(
+                    "allocations",
+                    queryset=PaymentAllocation.objects.select_related("payment")
+                    .filter(payment__is_voided=False)
+                    .order_by("payment__payment_date", "id"),
+                    to_attr="_prefetched_valid_allocations",
+                )
+            )
+            .order_by("-period_start", "-id")
+        )
         queryset = self.model.objects.annotate(
             invoice_total=Count("invoices", distinct=True),
             payment_total=Count("payments", distinct=True),
@@ -157,7 +171,7 @@ class CustomerAdmin(admin.ModelAdmin):
         ).prefetch_related(
             Prefetch(
                 "invoices",
-                queryset=Invoice.objects.exclude(status=Invoice.STATUS_VOID).order_by("-period_start", "-id"),
+                queryset=invoice_qs,
                 to_attr="prefetched_invoices",
             )
         )
