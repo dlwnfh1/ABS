@@ -7,7 +7,7 @@ from decimal import Decimal, InvalidOperation
 from django.contrib import admin
 from django.contrib import messages
 from django.contrib.admin.views.main import ChangeList
-from django.db.models import Count, Max, Prefetch, Q, Value
+from django.db.models import Count, DateField, ExpressionWrapper, F, Max, OuterRef, Prefetch, Q, Subquery, Value
 from django.db.models.functions import Replace
 from django.http import HttpResponseRedirect, HttpResponse
 from django.db import transaction
@@ -152,6 +152,13 @@ class CustomerAdmin(admin.ModelAdmin):
 
     def _candidate_base_queryset(self, active_filter="all", term_filter="all", include_allocations=True):
         invoice_qs = Invoice.objects.exclude(status=Invoice.STATUS_VOID).order_by("-period_start", "-id")
+        latest_period_end = Subquery(
+            Invoice.objects.filter(customer_id=OuterRef("pk"))
+            .exclude(status=Invoice.STATUS_VOID)
+            .order_by("-period_start", "-id")
+            .values("period_end")[:1],
+            output_field=DateField(),
+        )
         if include_allocations:
             invoice_qs = invoice_qs.prefetch_related(
                 Prefetch(
@@ -176,6 +183,11 @@ class CustomerAdmin(admin.ModelAdmin):
             invoice_total=Count("invoices", distinct=True),
             payment_total=Count("payments", distinct=True),
             last_payment_date=Max("payments__payment_date", filter=Q(payments__is_voided=False)),
+            latest_invoice_period_end=latest_period_end,
+            next_billing_period_sort=ExpressionWrapper(
+                F("latest_invoice_period_end") + timedelta(days=1),
+                output_field=DateField(),
+            ),
         ).prefetch_related(
             Prefetch(
                 "invoices",
@@ -318,6 +330,13 @@ class CustomerAdmin(admin.ModelAdmin):
                 if candidate["status"] == status_filter
             ]
             queryset = queryset.filter(pk__in=customer_ids)
+
+        if status_filter in {"due_in_15", "due_in_30"} and not filter_params.get("o"):
+            queryset = queryset.order_by(
+                F("next_billing_period_sort").asc(nulls_last=True),
+                "name",
+                "account_number",
+            )
 
         return queryset
 
@@ -1060,7 +1079,7 @@ class CustomerAdmin(admin.ModelAdmin):
             return format_html('<span style="color:#b91c1c;font-weight:700;">! {}</span>', labels["ready"])
         return labels.get(status, status)
 
-    @admin.display(description="Next Billing Period")
+    @admin.display(ordering="next_billing_period_sort", description="Next Billing Period")
     def next_invoice_period(self, obj):
         candidate = self._candidate_for(obj)
         if candidate.get("period_start") and candidate.get("period_end"):

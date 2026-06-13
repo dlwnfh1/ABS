@@ -120,3 +120,39 @@ class CustomerCsvAdminTests(TestCase):
         self.admin._ensure_candidate_map(params)
 
         self.assertEqual(self.admin._candidate_map[customer.pk]["status"], "already_issued")
+
+    def test_due_in_15_customers_are_ordered_by_next_billing_period(self):
+        today = timezone.localdate()
+        later_customer = Customer.objects.create(
+            name="A Later Customer",
+            account_number="A200",
+            billing_address1="2 Later St",
+            billing_term=3,
+        )
+        earlier_customer = Customer.objects.create(
+            name="Z Earlier Customer",
+            account_number="Z100",
+            billing_address1="1 Earlier St",
+            billing_term=3,
+        )
+        for customer, next_period_start in (
+            (later_customer, today + timedelta(days=25)),
+            (earlier_customer, today + timedelta(days=20)),
+        ):
+            Invoice.objects.create(
+                customer=customer,
+                period_start=next_period_start - timedelta(days=90),
+                period_end=next_period_start - timedelta(days=1),
+                issue_date=next_period_start - timedelta(days=105),
+                due_date=next_period_start - timedelta(days=90),
+                status=Invoice.STATUS_ISSUED,
+            )
+
+        request = self.factory.get(
+            "/admin/customers/customer/",
+            {"workflow_status": "due_in_15", "active_state": "active"},
+        )
+
+        customers = list(self.admin.get_queryset(request))
+
+        self.assertEqual(customers, [earlier_customer, later_customer])
