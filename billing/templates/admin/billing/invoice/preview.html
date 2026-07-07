@@ -161,7 +161,7 @@
                 <div class="invoice-panel soft" style="{% if is_special_invoice_format %}padding-top:10px; padding-bottom:10px;{% endif %}">
                     <div class="invoice-panel-title">Billing Overview</div>
                     <strong>{{ invoice.period_start|date:"m/d/Y" }} - {{ invoice.period_end|date:"m/d/Y" }}</strong>
-                    <div class="muted">Billing Term: {{ invoice.customer.get_billing_term_display }}<br>{% if not is_special_invoice_format %}Tax Rate: {{ invoice.tax_rate }}%<br>{% endif %}Current Billing Amount: ${{ invoice.current_period_amount|floatformat:2 }}</div>
+                    <div class="muted">Billing Term: {{ invoice.get_billing_term_snapshot_display }}<br>{% if not is_special_invoice_format %}Tax Rate: {{ invoice.tax_rate }}%<br>{% endif %}Current Billing Amount: ${{ invoice.billing_amount_snapshot|floatformat:2 }}</div>
                 </div>
             </div>
 

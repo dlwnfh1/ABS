@@ -185,11 +185,16 @@ class Customer(models.Model):
         if not self.can_generate_initial_invoice():
             return None
 
-        from billing.models import Invoice, add_months
+        from billing.models import Invoice
 
         period_start = self.first_billing_date
-        period_end = add_months(period_start, self.billing_term) - timedelta(days=1)
-        existing = Invoice.objects.filter(customer=self, period_start=period_start, period_end=period_end).first()
+        period_end = Invoice.compute_period_end(period_start, self.billing_term)
+        existing = (
+            Invoice.objects.filter(customer=self, period_start=period_start)
+            .exclude(status=Invoice.STATUS_VOID)
+            .order_by("period_end", "id")
+            .first()
+        )
         if existing:
             return existing
 
@@ -201,6 +206,10 @@ class Customer(models.Model):
             due_date=period_start,
             auto_generated=False,
             status=Invoice.STATUS_ISSUED,
+            billing_term_snapshot=self.billing_term,
+            billing_amount_snapshot=self.current_billing_amount,
+            billing_description_snapshot=self.current_billing_description,
+            tax_rate_snapshot=self.tax_rate,
         )
         invoice.save(create_followup=False)
         return invoice

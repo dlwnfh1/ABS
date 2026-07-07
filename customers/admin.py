@@ -1011,7 +1011,7 @@ class CustomerAdmin(admin.ModelAdmin):
         today = timezone.localdate()
         if latest_invoice:
             period_start = latest_invoice.next_period_start
-            period_end = latest_invoice.next_period_end
+            period_end = Invoice.compute_period_end(period_start, obj.billing_term)
             issue_date = period_start - timedelta(days=15)
             days_until_issue = (issue_date - today).days
             if days_until_issue <= 0:

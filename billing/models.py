@@ -31,6 +31,29 @@ class Invoice(models.Model):
     partial_payment = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
     subtotal = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
     tax_rate = models.DecimalField(max_digits=6, decimal_places=3, default=Decimal("0.000"))
+    billing_term_snapshot = models.PositiveSmallIntegerField(
+        choices=(
+            (3, "3 Months"),
+            (6, "6 Months"),
+            (9, "9 Months"),
+            (12, "12 Months"),
+        ),
+        blank=True,
+        null=True,
+    )
+    billing_amount_snapshot = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        blank=True,
+        null=True,
+    )
+    billing_description_snapshot = models.CharField(max_length=255, blank=True, default="")
+    tax_rate_snapshot = models.DecimalField(
+        max_digits=6,
+        decimal_places=3,
+        blank=True,
+        null=True,
+    )
     tax_amount = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
     total_due = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_DRAFT)
@@ -64,7 +87,21 @@ class Invoice(models.Model):
 
     @property
     def next_period_end(self) -> date:
-        return add_months(self.next_period_start, self.customer.billing_term) - timedelta(days=1)
+        return self.compute_period_end(self.next_period_start, self.billing_term_snapshot or self.customer.billing_term)
+
+    @staticmethod
+    def compute_period_end(period_start: date, billing_term: int) -> date:
+        return add_months(period_start, billing_term) - timedelta(days=1)
+
+    def ensure_billing_snapshot(self):
+        if self.billing_term_snapshot is None:
+            self.billing_term_snapshot = self.customer.billing_term
+        if self.billing_amount_snapshot is None:
+            self.billing_amount_snapshot = self.customer.current_billing_amount
+        if self.tax_rate_snapshot is None:
+            self.tax_rate_snapshot = self.customer.tax_rate
+        if not self.billing_description_snapshot:
+            self.billing_description_snapshot = self.customer.current_billing_description
 
     @property
     def current_period_amount(self) -> Decimal:
@@ -158,6 +195,7 @@ class Invoice(models.Model):
         return max(outstanding.quantize(Decimal("0.01")), Decimal("0.00"))
 
     def statement_base_totals(self, exclude_payment_id=None):
+        self.ensure_billing_snapshot()
         self.rebuild_items()
         line_total = self.items.aggregate(total=Sum("amount"))["total"] or Decimal("0.00")
         prior_invoices = (
@@ -182,7 +220,7 @@ class Invoice(models.Model):
         subtotal = (Decimal(line_total) - prior_base_paid).quantize(Decimal("0.01"))
         if subtotal < Decimal("0.00"):
             subtotal = Decimal("0.00")
-        tax_rate = self.customer.tax_rate
+        tax_rate = self.tax_rate_snapshot or Decimal("0.000")
         self.tax_rate = tax_rate
         gross_total = (prior_gross_outstanding + self.current_period_total).quantize(Decimal("0.01"))
         tax_amount = (gross_total - subtotal).quantize(Decimal("0.01"))
@@ -213,6 +251,7 @@ class Invoice(models.Model):
         if not self.pk:
             return
 
+        self.ensure_billing_snapshot()
         self.items.all().delete()
 
         prior_invoices = (
@@ -226,7 +265,7 @@ class Invoice(models.Model):
                 InvoiceItem.objects.create(
                     invoice=self,
                     line_type=InvoiceItem.LINE_CARRYOVER,
-                    description=self.customer.current_billing_description,
+                    description=prior_invoice.billing_description_snapshot or prior_invoice.customer.current_billing_description,
                     period_start=prior_invoice.period_start,
                     period_end=prior_invoice.period_end,
                     amount=prior_invoice.current_period_amount,
@@ -235,10 +274,10 @@ class Invoice(models.Model):
         InvoiceItem.objects.create(
             invoice=self,
             line_type=InvoiceItem.LINE_CURRENT_PERIOD,
-            description=self.customer.current_billing_description,
+            description=self.billing_description_snapshot or self.customer.current_billing_description,
             period_start=self.period_start,
             period_end=self.period_end,
-            amount=self.customer.current_billing_amount,
+            amount=self.billing_amount_snapshot if self.billing_amount_snapshot is not None else self.customer.current_billing_amount,
         )
 
     def refresh_statement(self, commit: bool = True):
@@ -271,6 +310,7 @@ class Invoice(models.Model):
 
     def save(self, *args, **kwargs):
         create_followup = kwargs.pop("create_followup", True)
+        self.ensure_billing_snapshot()
         if not self.invoice_number:
             self.invoice_number = self.build_invoice_number()
         if not self.issue_date:
@@ -299,7 +339,7 @@ class Invoice(models.Model):
 
     def generate_next_invoice(self):
         next_start = self.next_period_start
-        next_end = self.next_period_end
+        next_end = self.compute_period_end(next_start, self.customer.billing_term)
         if Invoice.objects.filter(
             customer=self.customer,
             period_start=next_start,
@@ -315,6 +355,10 @@ class Invoice(models.Model):
             due_date=next_start,
             status=self.STATUS_ISSUED,
             auto_generated=True,
+            billing_term_snapshot=self.customer.billing_term,
+            billing_amount_snapshot=self.customer.current_billing_amount,
+            billing_description_snapshot=self.customer.current_billing_description,
+            tax_rate_snapshot=self.customer.tax_rate,
         )
         next_invoice.save(create_followup=False)
         return next_invoice
@@ -362,12 +406,12 @@ class Invoice(models.Model):
                 if not customer.first_billing_date or not customer.billable_services.exists():
                     continue
                 period_start = customer.first_billing_date
-                period_end = add_months(period_start, customer.billing_term) - timedelta(days=1)
+                period_end = cls.compute_period_end(period_start, customer.billing_term)
                 issue_date = period_start - timedelta(days=15)
                 due_date = period_start
             else:
                 period_start = latest_invoice.next_period_start
-                period_end = latest_invoice.next_period_end
+                period_end = cls.compute_period_end(period_start, customer.billing_term)
                 issue_date = period_start - timedelta(days=15)
                 due_date = period_start
 
@@ -412,7 +456,7 @@ class Invoice(models.Model):
             if not customer.can_generate_initial_invoice():
                 return None, "missing_setup", "Customer needs a first billing date and an active service."
             period_start = customer.first_billing_date
-            period_end = add_months(period_start, customer.billing_term) - timedelta(days=1)
+            period_end = cls.compute_period_end(period_start, customer.billing_term)
             issue_date = period_start - timedelta(days=15)
             existing_invoice = cls.objects.filter(customer=customer, period_start=period_start, period_end=period_end).first()
             if existing_invoice:
@@ -425,7 +469,7 @@ class Invoice(models.Model):
             return None, "missing_setup", "Customer needs a first billing date and a billable active service."
 
         period_start = latest_invoice.next_period_start
-        period_end = latest_invoice.next_period_end
+        period_end = cls.compute_period_end(period_start, customer.billing_term)
         issue_date = period_start - timedelta(days=15)
         existing_invoice = cls.objects.filter(customer=customer, period_start=period_start, period_end=period_end).first()
         if existing_invoice:

@@ -347,7 +347,7 @@
                 <div class="panel" style="background:#f5f8fb; margin-top: 3pt; padding-top: 3.2pt; padding-bottom: 2.4pt;">
                     <div class="section-label">Billing Overview</div>
                     <div class="strong-block">{{ invoice.period_start|date:"m/d/Y" }} - {{ invoice.period_end|date:"m/d/Y" }}</div>
-                    <div class="muted">Billing Term: {{ invoice.customer.get_billing_term_display }}<br>{% if not is_special_invoice_format %}Tax Rate: {{ invoice.tax_rate }}%<br>{% endif %}Current Billing Amount: ${{ invoice.current_period_amount|floatformat:2 }}</div>
+                    <div class="muted">Billing Term: {{ invoice.get_billing_term_snapshot_display }}<br>{% if not is_special_invoice_format %}Tax Rate: {{ invoice.tax_rate }}%<br>{% endif %}Current Billing Amount: ${{ invoice.billing_amount_snapshot|floatformat:2 }}</div>
                 </div>
             </td>
         </tr>
