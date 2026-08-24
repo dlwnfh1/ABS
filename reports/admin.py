@@ -16,7 +16,7 @@ from django.utils import timezone
 from xhtml2pdf import pisa
 
 from billing.models import Invoice, add_months
-from billing.pdf_utils import list_saved_invoice_pdf_records, merge_saved_invoice_pdf_records
+from billing.pdf_utils import list_saved_invoice_pdf_records, logo_symbol_data_uri, merge_saved_invoice_pdf_records
 from payments.models import Payment
 from customers.models import Service
 from reports.notifications import send_saved_invoice_emails
@@ -68,6 +68,8 @@ class ReportCenterAdmin(admin.ModelAdmin):
             path("overdue-customers/", self.admin_site.admin_view(self.overdue_customers_view), name="reports_reportcenter_overdue_customers"),
             path("overdue-customers/pdf/", self.admin_site.admin_view(self.overdue_customers_pdf_view), name="reports_reportcenter_overdue_customers_pdf"),
             path("overdue-customers/csv/", self.admin_site.admin_view(self.overdue_customers_csv_view), name="reports_reportcenter_overdue_customers_csv"),
+            path("customer-list/", self.admin_site.admin_view(self.customer_list_view), name="reports_reportcenter_customer_list"),
+            path("customer-list/pdf/", self.admin_site.admin_view(self.customer_list_pdf_view), name="reports_reportcenter_customer_list_pdf"),
             path("upcoming-billing/", self.admin_site.admin_view(self.upcoming_billing_view), name="reports_reportcenter_upcoming_billing"),
             path("non-billable-customers/", self.admin_site.admin_view(self.non_billable_customers_view), name="reports_reportcenter_non_billable_customers"),
             path("auto-ach-review/", self.admin_site.admin_view(self.auto_ach_review_view), name="reports_reportcenter_auto_ach_review"),
@@ -106,6 +108,11 @@ class ReportCenterAdmin(admin.ModelAdmin):
                         "title": "Overdue Customers Report (연체 고객 현황)",
                         "description": "Customers with past-due invoices, highest overdue term count, and remaining open balance.",
                         "url": reverse("admin:reports_reportcenter_overdue_customers"),
+                    },
+                    {
+                        "title": "Customer List Report (고객 목록)",
+                        "description": "Professional customer roster for licensing, legal, and government filing, with ABS report identification.",
+                        "url": reverse("admin:reports_reportcenter_customer_list"),
                     },
                     {
                         "title": "Upcoming Billing Report (인보이스 일정)",
@@ -468,6 +475,51 @@ class ReportCenterAdmin(admin.ModelAdmin):
         writer.writerow([])
         writer.writerow(["Totals", "", totals["overdue_invoices"], "", totals["max_terms_overdue"], f'{totals["overdue_total"]:.2f}', f'{totals["open_total"]:.2f}'])
         return response
+    def _customer_list_context(self, request):
+        include_inactive = request.GET.get("include_inactive") == "1"
+        customer_model = Invoice._meta.get_field("customer").related_model
+        customers = customer_model.objects.prefetch_related("services").order_by("name", "account_number")
+        if not include_inactive:
+            customers = customers.filter(is_active=True)
+
+        rows = []
+        for customer in customers:
+            active_services = [service for service in customer.services.all() if service.is_active]
+            primary_service = active_services[0] if active_services else None
+            services = [service.service_name for service in active_services if service.service_name]
+            rows.append({
+                "customer": customer,
+                "services": ", ".join(dict.fromkeys(services)) or "-",
+                "service_address": (
+                    " ".join(part for part in [primary_service.service_address1, primary_service.service_address2] if part)
+                    if primary_service else " ".join(part for part in [customer.billing_address1, customer.billing_address2] if part)
+                ),
+                "status": "Active" if customer.is_active else "Inactive",
+            })
+
+        query = "?include_inactive=1" if include_inactive else ""
+        return {
+            **self.admin_site.each_context(request),
+            "opts": self.model._meta,
+            "title": "Customer List Report (고객 목록)",
+            "rows": rows,
+            "customer_count": len(rows),
+            "include_inactive": include_inactive,
+            "report_date": timezone.localdate(),
+            "logo_symbol_data_uri": logo_symbol_data_uri(),
+            "reports_home_url": reverse("admin:reports_reportcenter_changelist"),
+            "customer_list_pdf_url": reverse("admin:reports_reportcenter_customer_list_pdf") + query,
+        }
+
+    def customer_list_view(self, request):
+        return TemplateResponse(request, "admin/reports/reportcenter/customer_list.html", self._customer_list_context(request))
+
+    def customer_list_pdf_view(self, request):
+        context = self._customer_list_context(request)
+        html = render_to_string("admin/reports/reportcenter/customer_list_pdf.html", context, request=request)
+        response = self._pdf_response(html, "neo-security-alarm-customer-list.pdf", as_attachment=True)
+        return response or redirect("admin:reports_reportcenter_customer_list")
+
 
     def _build_upcoming_billing_data(self):
         today = timezone.localdate()

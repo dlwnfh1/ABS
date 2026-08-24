@@ -1,0 +1,31 @@
+{% extends "portal/base.html" %}
+{% block content %}
+<div class="card">
+    <form method="get" class="btn-row" style="align-items:center; margin-top:0;">
+        <label style="margin:0;"><input type="checkbox" name="include_inactive" value="1"{% if include_inactive %} checked{% endif %} style="width:auto; margin-right:8px;">Include inactive customers</label>
+        <button class="btn btn-secondary" type="submit">Apply</button>
+        <a class="btn btn-primary" href="{% url 'portal:customer_list_report_pdf' %}{% if include_inactive %}?include_inactive=1{% endif %}">Download PDF</a>
+    </form>
+</div>
+
+<div class="grid cards-3" style="margin-top:18px;">
+    <div class="card"><div class="stat-label">Customers Included</div><div class="stat-value">{{ customer_count }}</div></div>
+    <div class="card"><div class="stat-label">Status Scope</div><div class="stat-value" style="font-size:1.25rem;">{% if include_inactive %}Active + Inactive{% else %}Active Only{% endif %}</div></div>
+    <div class="card"><div class="stat-label">Report Date</div><div class="stat-value" style="font-size:1.25rem;">{{ report_date|date:"m/d/Y" }}</div></div>
+</div>
+
+<div class="card" style="margin-top:18px;">
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>Account #</th><th>Customer</th><th>Billing Address</th><th>Phone</th><th>Service</th><th>Status</th></tr></thead>
+            <tbody>
+                {% for row in rows %}
+                <tr><td>{{ row.customer.display_account_number }}</td><td>{{ row.customer.name }}</td><td>{{ row.billing_address }}</td><td>{{ row.customer.email_address|default:"-" }}</td><td>{{ row.services }}</td><td>{{ row.status }}</td></tr>
+                {% empty %}
+                <tr><td colspan="6">No customers found.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

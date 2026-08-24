@@ -1320,6 +1320,7 @@ def report_index_view(request):
         {"title": "A/R by Billing Term", "description": "Open balances grouped by billing term overdue count.", "url": reverse("portal:ar_aging")},
         {"title": "Payment Activity Report", "description": "Payment activity for a selected date range.", "url": reverse("portal:payments_report")},
         {"title": "Accountant Tax Report", "description": "Payments grouped into NY, NJ, and Other with service and tax totals.", "url": reverse("portal:accountant_tax_report")},
+        {"title": "Customer List Report", "description": "Professional customer list for licensing, legal, and government filing.", "url": reverse("portal:customer_list_report")},
         {"title": "Past-Due Customers", "description": "Customers with overdue invoices and highest overdue term count.", "url": reverse("portal:overdue_customers")},
         {"title": "Upcoming Billing Schedule", "description": "Customers whose invoices are ready now or due soon.", "url": reverse("portal:upcoming_billing")},
         {"title": "Non-Billable Customers", "description": "Active customers and services that are on billing hold or marked complimentary.", "url": reverse("portal:non_billable_customers")},
@@ -1328,6 +1329,73 @@ def report_index_view(request):
         {"title": "Customer Statement", "description": "Invoice and payment history for a single customer.", "url": reverse("portal:customer_statement")},
     ]
     return render(request, "portal/report_index.html", _portal_context(request, active_nav="reports", title="Reports", report_links=report_links))
+
+def _build_customer_list_report_rows(include_inactive=False):
+    customers = Customer.objects.prefetch_related(
+        Prefetch(
+            "services",
+            queryset=Service.objects.filter(is_active=True).order_by("id"),
+            to_attr="_report_active_services",
+        )
+    ).order_by("name", "account_number")
+    if not include_inactive:
+        customers = customers.filter(is_active=True)
+
+    rows = []
+    for customer in customers:
+        primary_service = customer._report_active_services[0] if customer._report_active_services else None
+        services = [service.service_name for service in customer._report_active_services if service.service_name]
+        rows.append({
+            "customer": customer,
+            "services": ", ".join(dict.fromkeys(services)) or "-",
+            "service_address": (
+                " ".join(part for part in [primary_service.service_address1, primary_service.service_address2] if part)
+                if primary_service else " ".join(part for part in [customer.billing_address1, customer.billing_address2] if part)
+            ),
+            "status": "Active" if customer.is_active else "Inactive",
+        })
+    return rows
+
+
+@login_required(login_url="portal:login")
+def customer_list_report_view(request):
+    include_inactive = request.GET.get("include_inactive") == "1"
+    rows = _build_customer_list_report_rows(include_inactive=include_inactive)
+    return render(
+        request,
+        "portal/customer_list_report.html",
+        _portal_context(
+            request,
+            active_nav="reports",
+            title="Customer List Report",
+            page_subtitle="Neo Security Alarm Inc. | Alarm Billing System (ABS)",
+            rows=rows,
+            customer_count=len(rows),
+            include_inactive=include_inactive,
+            report_date=timezone.localdate(),
+        ),
+    )
+
+
+@login_required(login_url="portal:login")
+def customer_list_report_pdf_view(request):
+    include_inactive = request.GET.get("include_inactive") == "1"
+    rows = _build_customer_list_report_rows(include_inactive=include_inactive)
+    context = {
+        "rows": rows,
+        "customer_count": len(rows),
+        "include_inactive": include_inactive,
+        "report_date": timezone.localdate(),
+        "logo_symbol_data_uri": logo_symbol_data_uri(),
+    }
+    html = render_to_string("admin/reports/reportcenter/customer_list_pdf.html", context, request=request)
+    output = HttpResponse(content_type="application/pdf")
+    ensure_md5_compat()
+    result = pisa.CreatePDF(html, dest=output, encoding="utf-8")
+    if result.err:
+        raise Http404("Customer list PDF generation failed.")
+    return _pdf_response(output.content, "neo-security-alarm-customer-list.pdf", as_attachment=True)
+
 
 
 @login_required(login_url="portal:login")
